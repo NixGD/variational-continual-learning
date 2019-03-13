@@ -20,12 +20,12 @@ class VCL_NN(nn.Module):
 #       (w_means, w_vars), (b_means, b_vars)
 #       each of these is a tensor
         self.prior_heads, self.posterior_heads = None, None
-        init_prior()
+        self.init_prior()
 
 
     def sample_from(self, post):
         '''Helper for forward.  Given a tuple with the mean/var for the weights/bias, return sampled values'''
-        (w_means, w_vars), (b_means, b_vars) = self.posterior
+        (w_means, w_vars), (b_means, b_vars) = post
         w_epsilons = torch.randn_like(w_means)
         b_epsilons = torch.randn_like(b_means)
 
@@ -35,12 +35,12 @@ class VCL_NN(nn.Module):
         return sampled_weights, sampled_bias
 
     def forward(self, x, task):
-        sampled_weights, sampled_bias = sample_from(self.posterior)
+        sampled_weights, sampled_bias = self.sample_from(self.posterior)
 
-        for i, layer in enumerated(sampled_weights):
+        for i, layer in enumerate(sampled_weights):
             x = F.relu(layer @ x + sampled_bias[i])
 
-        sampled_head_weights, sampled_head_bias = sample_from(posterior_heads[task])
+        sampled_head_weights, sampled_head_bias = self.sample_from(self.posterior_heads[task])
         x = F.relu(sampled_head_weights @ x + sampled_head_bias)
 
         return x
@@ -67,17 +67,17 @@ class VCL_NN(nn.Module):
         # Prior
         ((prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars)) = self.prior
 
-        head_prior_means = get_head_parameter_list(self.prior_heads, "means")
+        head_prior_means = self.get_head_parameter_list(self.prior_heads, "means")
         prior_means = torch.cat((prior_w_means, prior_b_means, head_prior_means), axis=0)
-        head_prior_vars = get_head_parameter_list(self.prior_heads, "vars")
+        head_prior_vars = self.get_head_parameter_list(self.prior_heads, "vars")
         prior_vars = torch.cat((prior_w_vars, prior_b_vars, head_prior_vars), axis=0)
 
         # Posterior
         ((post_w_means, post_w_vars), (post_b_means, post_b_vars)) = self.posterior
 
-        head_post_means = get_head_parameter_list(self.post_heads, "means")
+        head_post_means = self.get_head_parameter_list(self.post_heads, "means")
         post_means = torch.cat((post_w_means, post_b_means, head_post_means), axis=0)
-        head_post_vars = get_head_parameter_list(self.post_heads, "vars")
+        head_post_vars = self.get_head_parameter_list(self.post_heads, "vars")
         post_vars = torch.cat((post_w_vars, post_b_vars, head_post_vars), axis=0)
 
         # Calculate KL for individual normal distributions over parameters
@@ -106,7 +106,7 @@ class VCL_NN(nn.Module):
 
         if self.prior_heads == None:
             self.prior_heads = []
-            for _ in range(n_tasks):
+            for _ in range(self.n_tasks):
                 w_means = torch.zeros(self.layer_width, self.out_size)
                 w_vars = torch.ones_like(w_means)
                 b_means = torch.zeros_like(self.out_size)
