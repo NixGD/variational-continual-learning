@@ -2,6 +2,7 @@ import argparse
 import experiments.discriminative
 
 
+# experiments from the VCL paper that can be carried out
 EXP_OPTIONS = {
     'disc_p_mnist': experiments.discriminative.permuted_mnist,
     'disc_s_mnist': experiments.discriminative.split_mnist,
