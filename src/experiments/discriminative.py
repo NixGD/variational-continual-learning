@@ -15,6 +15,7 @@ MNIST_N_CLASSES = 10
 EPOCHS = 100
 BATCH_SIZE = 256
 LR = 0.001
+NUM_TASKS = 10
 
 
 def permuted_mnist():
@@ -36,7 +37,7 @@ def permuted_mnist():
     y_test = torch.tensor([image[1] for image in mnist_test])
 
     # pixel permutation used for each task
-    perm = torch.randperm(MNIST_FLATTENED_DIM)
+    perms = [torch.randperm(MNIST_FLATTENED_DIM) for _ in range(NUM_TASKS)]
 
     # create model
     model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2)
@@ -44,7 +45,7 @@ def permuted_mnist():
 
     # each task is a random permutation of MNIST
     for task in tqdm(range(10), 'Training task: '):
-        x_train = permute_dataset(x_train, perm)
+        x_train = permute_dataset(x_train, perms[task])
 
         for e in range(EPOCHS):
             # todo optimization code - how to implement not yet decided
@@ -53,7 +54,7 @@ def permuted_mnist():
     # test
     accuracy = []
     for task in tqdm(range(10), 'Testing task: '):
-        x_test = permute_dataset(x_test, perm)
+        x_test = permute_dataset(x_test, perms[task])
         # pred = model(x_test)
         # accuracy.append(class_accuracy(pred, y_test))
     write_as_json('disc_p_mnist/accuracy.txt', accuracy)
