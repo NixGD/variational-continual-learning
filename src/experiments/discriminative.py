@@ -44,7 +44,7 @@ def permuted_mnist():
     # optimizer = optim.Adam(model.parameters(), lr=LR)
 
     # each task is a random permutation of MNIST
-    for task in tqdm(range(10), 'Training task: '):
+    for task in tqdm(range(NUM_TASKS), 'Training task: '):
         x_train = permute_dataset(x_train, perms[task])
 
         for e in range(EPOCHS):
@@ -53,7 +53,7 @@ def permuted_mnist():
 
     # test
     accuracy = []
-    for task in tqdm(range(10), 'Testing task: '):
+    for task in tqdm(range(NUM_TASKS), 'Testing task: '):
         x_test = permute_dataset(x_test, perms[task])
         # pred = model(x_test)
         # accuracy.append(class_accuracy(pred, y_test))
