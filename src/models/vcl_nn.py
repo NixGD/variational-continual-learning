@@ -38,8 +38,11 @@ class VCL_NN(nn.Module):
         pass
 
     def calculate_KL_term(self):
-        '''Calculates and returns KL(posterior, prior). Formula from L3 slide 14.'''
-        # Concatenate w and b statistics into one vector for ease of calculation
+        """
+        Calculates and returns the KL divergence of the new posterior and the previous
+        iteration's posterior. See equation L3, slide 14.
+        """
+        # Concatenate w and b statistics into one tensor for ease of calculation
         ((prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars)) = self.prior
         prior_means = torch.cat((torch.reshape(prior_w_means, (-1,)), 
                                 torch.reshape(prior_b_means, (-1,))), dim=0)
