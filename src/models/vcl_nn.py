@@ -30,7 +30,7 @@ class VCL_NN(nn.Module):
             x = F.relu(x @ weight + bias)
 
         # Apply final softmax
-        sm = torch.nn.Softmax(0)
+        sm = torch.nn.Softmax(dim=1)
         x = sm(x)
 
         return x
