@@ -19,18 +19,20 @@ class VCL_NN(nn.Module):
 
     def forward(self, x):
         (w_means, w_vars), (b_means, b_vars) = self.posterior
-        w_epsilons = torch.randn_like(w_means)
-        b_epsilons = torch.randn_like(b_means)
+        sampled_weights, sampled_bias = [], []
+        for i in range(self.n_hidden_layers + 1):
+            w_epsilons = torch.randn_like(w_means[i])
+            b_epsilons = torch.randn_like(b_means[i])
 
-        sampled_weights = w_means + w_epsilons * torch.sqrt(w_vars)
-        sampled_bias = b_means + b_epsilons * torch.sqrt(b_vars)
+            sampled_weights.append(w_means[i] + w_epsilons * torch.sqrt(w_vars[i]))
+            sampled_bias.append(b_means[i] + b_epsilons * torch.sqrt(b_vars[i]))
 
         # Apply each layer
         for weight, bias in zip(sampled_weights, sampled_bias):
             x = F.relu(x @ weight + bias)
 
         # Apply final softmax
-        sm = torch.nn.Softmax(0)
+        sm = torch.nn.Softmax(1)
         x = sm(x)
 
         return x
@@ -45,16 +47,16 @@ class VCL_NN(nn.Module):
         """
         # Concatenate w and b statistics into one tensor for ease of calculation
         ((prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars)) = self.prior
-        prior_means = torch.cat((torch.reshape(prior_w_means, (-1,)), 
-                                torch.reshape(prior_b_means, (-1,))), dim=0)
-        prior_vars  = torch.cat((torch.reshape(prior_w_vars, (-1,)), 
-                                torch.reshape(prior_b_vars, (-1,))), dim=0)
+        prior_means = torch.cat([torch.reshape(prior_w_means[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                prior_b_means)
+        prior_vars  = torch.cat([torch.reshape(prior_w_vars[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                prior_b_vars)
 
         ((post_w_means, post_w_vars), (post_b_means, post_b_vars)) = self.posterior
-        post_means = torch.cat((torch.reshape(post_w_means, (-1,)), 
-                                torch.reshape(post_b_means, (-1,))), dim=0)
-        post_vars  = torch.cat((torch.reshape(post_w_vars, (-1,)), 
-                                torch.reshape(post_b_vars, (-1,))), dim=0)
+        post_means = torch.cat([torch.reshape(post_w_means[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                post_b_means)
+        post_vars  = torch.cat([torch.reshape(post_w_vars[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                post_b_vars)
 
         # Calculate KL for individual normal distributions over parameters
         KL_elementwise = \
@@ -100,33 +102,41 @@ class VCL_NN(nn.Module):
         tensors and set them to their initial values
         """
         # The first prior is initialised to be zero mean, unit variance
-        prior_w_means = torch.zeros(self.n_hidden_layers + 1, self.layer_width,
-                                    self.layer_width)
-        prior_w_vars  = torch.ones(self.n_hidden_layers + 1, self.layer_width,
-                                   self.layer_width)
-        prior_b_means = torch.zeros(self.n_hidden_layers + 1, self.layer_width)
-        prior_b_vars  = torch.ones(self.n_hidden_layers + 1, self.layer_width)
+        prior_w_means = [torch.zeros(self.input_size, self.layer_width)] + \
+                        [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
+                        [torch.zeros(self.layer_width, self.out_size)]
+        prior_w_vars  = [torch.ones(self.input_size, self.layer_width)] + \
+                        [torch.ones(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
+                        [torch.ones(self.layer_width, self.out_size)]
+        prior_b_means = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)] + \
+                        [torch.zeros(self.out_size)]
+        prior_b_vars  = [torch.ones(self.layer_width) for i in range(self.n_hidden_layers)] + \
+                        [torch.ones(self.out_size)]
 
         self.prior = ((prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars))
 
         # Prior tensors are registered as buffers to indicate to PyTorch that
         # they are persistent state but shouldn't be updated by the optimiser
-        self.register_buffer("prior_w_means", prior_w_means)
-        self.register_buffer("prior_w_vars", prior_w_vars)
-        self.register_buffer("prior_b_means", prior_b_means)
-        self.register_buffer("prior_b_vars", prior_b_vars)
+        for i in range(self.n_hidden_layers + 1):
+            self.register_buffer("prior_w_means_" + str(i), prior_w_means[i])
+            self.register_buffer("prior_w_vars_" + str(i), prior_w_vars[i])
+            self.register_buffer("prior_b_means_" + str(i), prior_b_means[i])
+            self.register_buffer("prior_b_vars_" + str(i), prior_b_vars[i])
 
         # The first posterior is initialised to be the same as the first prior
-        posterior_w_means = nn.Parameter(prior_w_means.clone().detach().requires_grad_(True))
-        posterior_w_vars  = nn.Parameter(prior_w_vars.clone().detach().requires_grad_(True))
-        posterior_b_means = nn.Parameter(prior_b_means.clone().detach().requires_grad_(True))
-        posterior_b_vars  = nn.Parameter(prior_b_vars.clone().detach().requires_grad_(True))
+        posterior_w_means, posterior_w_vars, posterior_b_means, posterior_b_vars = [], [], [], []
+        for i in range(self.n_hidden_layers + 1):
+            posterior_w_means.append(nn.Parameter(prior_w_means[i].clone().detach().requires_grad_(True)))
+            posterior_w_vars.append(nn.Parameter(prior_w_vars[i].clone().detach().requires_grad_(True)))
+            posterior_b_means.append(nn.Parameter(prior_b_means[i].clone().detach().requires_grad_(True)))
+            posterior_b_vars.append(nn.Parameter(prior_b_vars[i].clone().detach().requires_grad_(True)))
 
         self.posterior = ((posterior_w_means, posterior_w_vars), (posterior_b_means, posterior_b_vars))
 
         # Posterior tensors are registered as parameters to indicate to PyTorch
         # that they are persistent state that should be updated by the optimiser
-        self.register_parameter("posterior_w_means", posterior_w_means)
-        self.register_parameter("posterior_w_vars", posterior_w_vars)
-        self.register_parameter("posterior_b_means", posterior_b_means)
-        self.register_parameter("posterior_b_vars", posterior_b_vars)
+        for i in range(self.n_hidden_layers + 1):
+            self.register_parameter("posterior_w_means_" + str(i), posterior_w_means[i])
+            self.register_parameter("posterior_w_vars_" + str(i), posterior_w_vars[i])
+            self.register_parameter("posterior_b_means_" + str(i), posterior_b_means[i])
+            self.register_parameter("posterior_b_vars_" + str(i), posterior_b_vars[i])
