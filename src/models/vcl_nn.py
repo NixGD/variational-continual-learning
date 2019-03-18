@@ -66,13 +66,15 @@ class VCL_NN(nn.Module):
         return 0.5 * KL_elementwise.sum()
 
     def logprob(self, x, y):
+        preds = self.forward(x)
+
         # Make mask to select probabilities associated with actual y values
-        mask = torch.zeros(x.size(), dtype=torch.uint8)
-        for i in range(x.size()[1]):
-            mask[y[i].item()][i] = 1
+        mask = torch.zeros(preds.size(), dtype=torch.uint8)
+        for i in range(preds.size()[0]):
+            mask[i][y[i].item()] = 1
         
         # Select probabilities, log and sum them
-        y_preds = torch.masked_select(self.forward(x), mask)
+        y_preds = torch.masked_select(preds, mask)
         return torch.sum(torch.log(y_preds))
 
     def loss(self, x, y):
