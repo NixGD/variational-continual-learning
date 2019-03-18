@@ -72,7 +72,7 @@ class VCL_NN(nn.Module):
         
         # Select probabilities, log and sum them
         y_preds = torch.masked_select(self.forward(x), mask)
-        return sum(np.log(y_preds))
+        return torch.sum(torch.log(y_preds))
 
     def loss(self, x, y):
         return self.calculate_KL_term() - self.logprob(x, y)
