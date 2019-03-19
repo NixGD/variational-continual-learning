@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 
 class VCL_NN(nn.Module):
     """A Bayesian multi-head neural network which updates its parameters using
