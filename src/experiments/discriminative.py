@@ -13,10 +13,10 @@ from tqdm import tqdm
 # input and output dimensions of an FCFF MNIST classifier
 MNIST_FLATTENED_DIM = 28 * 28
 MNIST_N_CLASSES = 10
-EPOCHS = 0
+EPOCHS = 100
 BATCH_SIZE = 256
 LR = 0.001
-NUM_TASKS = 1
+NUM_TASKS = 10
 
 
 def permuted_mnist():
