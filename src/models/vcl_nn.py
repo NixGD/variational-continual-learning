@@ -160,17 +160,17 @@ class VCL_NN(nn.Module):
 
         grad_copy = lambda t : nn.Parameter(t.clone().detach().requires_grad_(True))
 
-        posterior_w_means = map(grad_copy, prior_w_means)
-        posterior_w_vars = map(grad_copy, prior_w_vars)
-        posterior_b_means = map(grad_copy, prior_b_means)
-        posterior_b_vars = map(grad_copy, prior_b_vars)
+        posterior_w_means = list(map(grad_copy, prior_w_means))
+        posterior_w_vars = list(map(grad_copy, prior_w_vars))
+        posterior_b_means = list(map(grad_copy, prior_b_means))
+        posterior_b_vars = list(map(grad_copy, prior_b_vars))
 
         self.posterior = ((posterior_w_means, posterior_w_vars), (posterior_b_means, posterior_b_vars))
 
-        head_posterior_w_means = map(grad_copy, head_prior_w_means)
-        head_posterior_w_vars = map(grad_copy, head_prior_w_vars)
-        head_posterior_b_means = map(grad_copy, head_prior_b_means)
-        head_posterior_b_vars = map(grad_copy, head_prior_b_vars)
+        head_posterior_w_means = list(map(grad_copy, head_prior_w_means))
+        head_posterior_w_vars = list(map(grad_copy, head_prior_w_vars))
+        head_posterior_b_means = list(map(grad_copy, head_prior_b_means))
+        head_posterior_b_vars = list(map(grad_copy, head_prior_b_vars))
 
         self.head_posterior = ((head_posterior_w_means, head_posterior_w_vars),(head_posterior_b_means, head_posterior_b_vars))
 
