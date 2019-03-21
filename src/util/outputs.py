@@ -1,9 +1,11 @@
 import json
 import os
+import torch
 
 
 # default directory for outputting values
 OUT_DIR = '../out/experiments/'
+MODEL_DIR = '../out/models/'
 
 
 def write_as_json(filename, data):
@@ -21,3 +23,11 @@ def write_as_json(filename, data):
 
     with open(OUT_DIR + filename, "w") as f:
         json.dump(data, f)
+
+
+def save_model(model, filename):
+    if not os.path.exists(os.path.dirname(MODEL_DIR)):
+        print('creating ...')
+        os.makedirs(os.path.dirname(MODEL_DIR))
+
+    torch.save(model, MODEL_DIR + filename)

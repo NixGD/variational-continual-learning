@@ -1,6 +1,9 @@
 # Downloaded datasets
 data/
 
+# Saved models
+models/
+
 # Outputs produced
 out/
 

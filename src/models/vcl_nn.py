@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 
 class VCL_NN(nn.Module):
     """A Bayesian multi-head neural network which updates its parameters using
@@ -20,28 +20,31 @@ class VCL_NN(nn.Module):
 #       (w_means, w_vars), (b_means, b_vars)
 #       each of these is a tensor
         self.prior_heads, self.posterior_heads = None, None
-        self.init_prior()
+        self.init_variables()
+        self.task_id = 0
 
-
-    def sample_from(self, post):
+    def sample_from(self, means, vars):
         '''Helper for forward.  Given a tuple with the mean/var for the weights/bias, return sampled values'''
-        (w_means, w_vars), (b_means, b_vars) = post
-        w_epsilons = torch.randn_like(w_means)
-        b_epsilons = torch.randn_like(b_means)
+        epsilons = torch.randn_like(vars)
+        return means + epsilons * torch.sqrt(vars)
 
-        sampled_weights = w_means + w_epsilons * torch.sqrt(w_vars)
-        sampled_bias = b_means + b_epsilons * torch.sqrt(b_vars)
+    def forward(self, x):
+        (w_means, w_vars), (b_means, b_vars) = self.posterior
+        sampled_weights = [self.sample_from(w_means[i], w_vars[i]) for i in range(self.n_hidden_layers + 1)]
+        sampled_bias = [self.sample_from(b_means[i], b_vars[i]) for i in range(self.n_hidden_layers + 1)]
 
-        return sampled_weights, sampled_bias
+        # Apply each layer
+        for weight, bias in zip(sampled_weights, sampled_bias):
+            x = F.relu(x @ weight + bias)
 
-    def forward(self, x, task):
-        sampled_weights, sampled_bias = self.sample_from(self.posterior)
+        (head_w_mean, head_w_vars), (head_b_means, head_b_vars) = self.posterior_heads[task]
+        sampled_head_weights = self.sample_from(head_w_mean, head_w_vars)
+        sampled_head_bias = self.sample_from(head_b_means, head_b_vars)
 
-        for i, layer in enumerate(sampled_weights):
-            x = F.relu(layer @ x + sampled_bias[i])
+        x = F.relu(x @ sampled_head_weights + sampled_head_bias)
 
-        sampled_head_weights, sampled_head_bias = self.sample_from(self.posterior_heads[task])
-        x = F.relu(sampled_head_weights @ x + sampled_head_bias)
+        sm = torch.nn.Softmax(dim=1)
+        x = sm(x)
 
         return x
 
@@ -66,19 +69,21 @@ class VCL_NN(nn.Module):
 
         # Prior
         ((prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars)) = self.prior
-
-        head_prior_means = self.get_head_parameter_list(self.prior_heads, "means")
-        prior_means = torch.cat((prior_w_means, prior_b_means, head_prior_means), axis=0)
-        head_prior_vars = self.get_head_parameter_list(self.prior_heads, "vars")
-        prior_vars = torch.cat((prior_w_vars, prior_b_vars, head_prior_vars), axis=0)
+        prior_means = torch.cat([torch.reshape(prior_w_means[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                prior_b_means +
+                                [self.get_head_parameter_list(self.prior_heads, "means")])
+        prior_vars  = torch.cat([torch.reshape(prior_w_vars[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                prior_b_vars +
+                                [self.get_head_parameter_list(self.prior_heads, "vars")])
 
         # Posterior
         ((post_w_means, post_w_vars), (post_b_means, post_b_vars)) = self.posterior
-
-        head_post_means = self.get_head_parameter_list(self.post_heads, "means")
-        post_means = torch.cat((post_w_means, post_b_means, head_post_means), axis=0)
-        head_post_vars = self.get_head_parameter_list(self.post_heads, "vars")
-        post_vars = torch.cat((post_w_vars, post_b_vars, head_post_vars), axis=0)
+        post_means = torch.cat([torch.reshape(post_w_means[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                post_b_means +
+                                [self.get_head_parameter_list(self.post_heads, "means")])
+        post_vars  = torch.cat([torch.reshape(post_w_vars[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
+                                post_b_vars +
+                                [self.get_head_parameter_list(self.post_heads, "vars")])
 
         # Calculate KL for individual normal distributions over parameters
         KL_elementwise = \
@@ -89,20 +94,85 @@ class VCL_NN(nn.Module):
         # Sum KL over all parameters
         return 0.5 * KL_elementwise.sum()
 
-    def loss(self):
-        pass
+    def logprob(self, x, y):
+        preds = self.forward(x)
 
-    def init_prior(self):
-        if self.prior == None:
-            w_means = torch.zeros(self.n_hidden_layers + 1,
-                                  self.layer_width, self.layer_width)
-            w_vars = torch.ones(self.n_hidden_layers + 1,
-                                self.layer_width, self.layer_width)
-            b_means = torch.zeros(self.n_hidden_layers + 1, self.layer_width)
-            b_vars = torch.ones(self.n_hidden_layers + 1, self.layer_width)
-            self.prior = ((w_means, w_vars), (b_means, b_vars))
-        else:
-            self.prior = self.posterior
+        # Make mask to select probabilities associated with actual y values
+        mask = torch.zeros(preds.size(), dtype=torch.uint8)
+        for i in range(preds.size()[0]):
+            mask[i][y[i].item()] = 1
+
+        # Select probabilities, log and sum them
+        y_preds = torch.masked_select(preds, mask)
+        return torch.sum(torch.log(y_preds))
+
+    def loss(self, x, y):
+        return self.calculate_KL_term() - self.logprob(x, y)
+
+    def reset_for_new_task(self):
+        """
+        Called after completion of a task, to reset state for the next task
+        """
+        self.task_id += 1
+
+        # Set the value of the prior to be the current value of the posterior
+        (prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars) = self.prior
+        (posterior_w_means, posterior_w_vars), (posterior_b_means, posterior_b_vars) = self.prior
+        prior_w_means.data.copy_(posterior_w_means.data)
+        prior_w_vars.data.copy_(posterior_w_vars.data)
+        prior_b_means.data.copy_(posterior_b_means.data)
+        prior_b_vars.data.copy_(posterior_b_vars.data)
+
+        # Update heads too.
+
+    def init_variables(self):
+        """
+        Called once, on model creation, to set up the prior and posterior
+        tensors and set them to their initial values
+        """
+        # The first prior is initialised to be zero mean, unit variance
+        prior_w_means = [torch.zeros(self.input_size, self.layer_width)] + \
+                        [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
+                        [torch.zeros(self.layer_width, self.out_size)]
+        prior_w_vars  = [torch.ones(self.input_size, self.layer_width)] + \
+                        [torch.ones(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
+                        [torch.ones(self.layer_width, self.out_size)]
+        prior_b_means = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)] + \
+                        [torch.zeros(self.out_size)]
+        prior_b_vars  = [torch.ones(self.layer_width) for i in range(self.n_hidden_layers)] + \
+                        [torch.ones(self.out_size)]
+
+        self.prior = ((prior_w_means, prior_w_vars), (prior_b_means, prior_b_vars))
+
+        # Prior tensors are registered as buffers to indicate to PyTorch that
+        # they are persistent state but shouldn't be updated by the optimiser
+        for i in range(self.n_hidden_layers + 1):
+            self.register_buffer("prior_w_means_" + str(i), prior_w_means[i])
+            self.register_buffer("prior_w_vars_" + str(i), prior_w_vars[i])
+            self.register_buffer("prior_b_means_" + str(i), prior_b_means[i])
+            self.register_buffer("prior_b_vars_" + str(i), prior_b_vars[i])
+
+        # The first posterior is initialised to be the same as the first prior
+        posterior_w_means, posterior_w_vars, posterior_b_means, posterior_b_vars = [], [], [], []
+        for i in range(self.n_hidden_layers + 1):
+            posterior_w_means.append(nn.Parameter(prior_w_means[i].clone().detach().requires_grad_(True)))
+            posterior_w_vars.append(nn.Parameter(prior_w_vars[i].clone().detach().requires_grad_(True)))
+            posterior_b_means.append(nn.Parameter(prior_b_means[i].clone().detach().requires_grad_(True)))
+            posterior_b_vars.append(nn.Parameter(prior_b_vars[i].clone().detach().requires_grad_(True)))
+
+        self.posterior = ((posterior_w_means, posterior_w_vars), (posterior_b_means, posterior_b_vars))
+
+        # Posterior tensors are registered as parameters to indicate to PyTorch
+        # that they are persistent state that should be updated by the optimiser
+        for i in range(self.n_hidden_layers + 1):
+            self.register_parameter("posterior_w_means_" + str(i), posterior_w_means[i])
+            self.register_parameter("posterior_w_vars_" + str(i), posterior_w_vars[i])
+            self.register_parameter("posterior_b_means_" + str(i), posterior_b_means[i])
+            self.register_parameter("posterior_b_vars_" + str(i), posterior_b_vars[i])
+
+
+        # TODO: I'm confused about what's happening above, so this is almost certainly going to need fixing.
+        # I just want to get the merge through first though.
 
         if self.prior_heads == None:
             self.prior_heads = []
@@ -116,4 +186,3 @@ class VCL_NN(nn.Module):
                 )
         else:
             self.prior_heads = self.posterior_heads
-        # TODO: update posterior too, at least so they don't both point to the same list.

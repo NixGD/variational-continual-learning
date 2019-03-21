@@ -1,11 +1,12 @@
-import numpy as np
 import torch
 import torch.optim as optim
-import torchvision.datasets as datasets
+from torch.nn import CrossEntropyLoss
+from torch.utils.data import DataLoader
+from torchvision.datasets import MNIST
+from torchvision.transforms import Compose
 from models.vcl_nn import VCL_NN
-from util.dataset_transforms import permute_dataset
-from util.operations import class_accuracy
-from util.outputs import write_as_json
+from util.transforms import Flatten, Permute
+from util.outputs import write_as_json, save_model
 from tqdm import tqdm
 
 
@@ -23,41 +24,49 @@ def permuted_mnist():
     Runs the 'Permuted MNIST' experiment from the VCL paper, in which each task
     is obtained by applying a fixed random permutation to the pixels of each image.
     """
-    # download MNIST and convert entire dataset to tensors for easy permutations
-    mnist_train = datasets.MNIST(root='./data/', train=True, download=True)
-    mnist_test = datasets.MNIST(root='./data/', train=False, download=True)
-
-    # create tensors for train dataset
-    x_train = torch.tensor([np.array(image[0]) for image in mnist_train])
-    x_train = torch.reshape(x_train, shape=(len(x_train), MNIST_FLATTENED_DIM))
-    y_train = torch.tensor([image[1] for image in mnist_train])
-    # create tensors for test dataset
-    x_test = torch.tensor([np.array(image[0]) for image in mnist_test])
-    x_test = torch.reshape(x_test, shape=(len(x_test), MNIST_FLATTENED_DIM))
-    y_test = torch.tensor([image[1] for image in mnist_test])
-
-    # pixel permutation used for each task
-    perms = [torch.randperm(MNIST_FLATTENED_DIM) for _ in range(NUM_TASKS)]
+    # flattening and permutation used for each task
+    transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(NUM_TASKS)]
 
     # create model
     model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2)
-    # optimizer = optim.Adam(model.parameters(), lr=LR)
+    optimizer = optim.Adam(model.parameters(), lr=LR)
+    criterion = CrossEntropyLoss()
 
     # each task is a random permutation of MNIST
-    for task in tqdm(range(NUM_TASKS), 'Training task: '):
-        x_train = permute_dataset(x_train, perms[task])
+    for task in range(NUM_TASKS):
+        print('TASK ' + str(task))
 
-        for e in range(EPOCHS):
-            # todo optimization code - how to implement not yet decided
-            pass
+        mnist_train = MNIST(root='../data/', train=True, download=True, transform=transforms[task])
+        train_loader = DataLoader(mnist_train, BATCH_SIZE)
+
+        for _ in tqdm(range(EPOCHS), 'Epochs: '):
+            for batch in train_loader:
+                optimizer.zero_grad()
+                x, y_true = batch
+
+                y_pred = model(x)
+                loss = criterion(y_pred, y_true)
+                loss.backward()
+                optimizer.step()
 
     # test
-    accuracy = []
+    task_accuracies = []
     for task in tqdm(range(NUM_TASKS), 'Testing task: '):
-        x_test = permute_dataset(x_test, perms[task])
-        # pred = model(x_test)
-        # accuracy.append(class_accuracy(pred, y_test))
-    write_as_json('disc_p_mnist/accuracy.txt', accuracy)
+        mnist_test = MNIST(root='../data/', train=False, download=True, transform=transforms[task])
+        test_loader = DataLoader(mnist_test, batch_size=1)
+        correct = 0
+
+        for sample in test_loader:
+            x, y_true = sample
+            y_pred = torch.argmax(model(x))
+
+            if y_pred == y_true:
+                correct += 1
+
+        task_accuracies.append(correct / len(mnist_test))
+
+    write_as_json('disc_p_mnist/accuracy.txt', task_accuracies)
+    save_model(model, 'disc_p_mnist/model.pth')
 
 
 def split_mnist():
