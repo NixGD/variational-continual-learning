@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+EPSILON = 1e-8 # Small value to avoid divide-by-zero and log(zero) problems
 
 class VCL_NN(nn.Module):
     """A Bayesian multi-head neural network which updates its parameters using
@@ -61,8 +62,8 @@ class VCL_NN(nn.Module):
 
         # Calculate KL for individual normal distributions over parameters
         KL_elementwise = \
-            post_vars / prior_vars + \
-            torch.pow(prior_means - post_means, 2) / prior_vars \
+            post_vars / (prior_vars + EPSILON)+ \
+            torch.pow(prior_means - post_means, 2) / (prior_vars + EPSILON) \
             - 1 + prior_log_vars - post_log_vars
 
         # Sum KL over all parameters
@@ -78,7 +79,7 @@ class VCL_NN(nn.Module):
         
         # Select probabilities, log and sum them
         y_preds = torch.masked_select(preds, mask)
-        return torch.sum(torch.log(y_preds))
+        return torch.sum(torch.log(y_preds + EPSILON))
 
     def loss(self, x, y):
         return self.calculate_KL_term() - self.logprob(x, y)
