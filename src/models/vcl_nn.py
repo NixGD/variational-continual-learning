@@ -28,7 +28,7 @@ class VCL_NN(nn.Module):
         epsilons = torch.randn_like(vars)
         return means + epsilons * torch.sqrt(vars)
 
-    def forward(self, x):
+    def forward(self, x, task):
         (w_means, w_vars), (b_means, b_vars) = self.posterior
         sampled_weights = [self.sample_from(w_means[i], w_vars[i]) for i in range(self.n_hidden_layers)]
         sampled_bias = [self.sample_from(b_means[i], b_vars[i]) for i in range(self.n_hidden_layers)]
@@ -84,8 +84,8 @@ class VCL_NN(nn.Module):
         # Sum KL over all parameters
         return 0.5 * KL_elementwise.sum()
 
-    def logprob(self, x, y):
-        preds = self.forward(x)
+    def logprob(self, x, y, task):
+        preds = self.forward(x, task)
 
         # Make mask to select probabilities associated with actual y values
         mask = torch.zeros(preds.size(), dtype=torch.uint8)
@@ -96,8 +96,8 @@ class VCL_NN(nn.Module):
         y_preds = torch.masked_select(preds, mask)
         return torch.sum(torch.log(y_preds))
 
-    def loss(self, x, y):
-        return self.calculate_KL_term() - self.logprob(x, y)
+    def loss(self, x, y, task):
+        return self.calculate_KL_term() - self.logprob(x, y, task)
 
     def reset_for_new_task(self):
         """
