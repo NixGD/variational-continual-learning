@@ -30,7 +30,6 @@ def permuted_mnist():
     # create model
     model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2)
     optimizer = optim.Adam(model.parameters(), lr=LR)
-    criterion = CrossEntropyLoss()
 
     # each task is a random permutation of MNIST
     for task in range(NUM_TASKS):
@@ -44,8 +43,7 @@ def permuted_mnist():
                 optimizer.zero_grad()
                 x, y_true = batch
 
-                y_pred = model(x)
-                loss = criterion(y_pred, y_true)
+                loss = model.loss(x, y_true)
                 loss.backward()
                 optimizer.step()
 
