@@ -113,13 +113,10 @@ class VCL_NN(nn.Module):
         prior_w_means     = [torch.zeros(self.input_size, self.layer_width)] + \
                             [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
                             [torch.zeros(self.layer_width, self.out_size)]
-        prior_w_log_vars  = [torch.zeros(self.input_size, self.layer_width)] + \
-                            [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
-                            [torch.zeros(self.layer_width, self.out_size)]
+        prior_w_log_vars  = [torch.zero_like(t) for t in prior_w_means]
         prior_b_means     = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)] + \
                             [torch.zeros(self.out_size)]
-        prior_b_log_vars  = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)] + \
-                            [torch.zeros(self.out_size)]
+        prior_b_log_vars  = [torch.zero_like(t) for t in prior_b_means]
 
         self.prior = ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars))
 
@@ -132,12 +129,12 @@ class VCL_NN(nn.Module):
             self.register_buffer("prior_b_log_vars_" + str(i), prior_b_log_vars[i])
 
         # The first posterior is initialised to be the same as the first prior
-        posterior_w_means, posterior_w_log_vars, posterior_b_means, posterior_b_log_vars = [], [], [], []
-        for i in range(self.n_hidden_layers + 1):
-            posterior_w_means.append(nn.Parameter(prior_w_means[i].clone().detach().requires_grad_(True)))
-            posterior_w_log_vars.append(nn.Parameter(prior_w_log_vars[i].clone().detach().requires_grad_(True)))
-            posterior_b_means.append(nn.Parameter(prior_b_means[i].clone().detach().requires_grad_(True)))
-            posterior_b_log_vars.append(nn.Parameter(prior_b_log_vars[i].clone().detach().requires_grad_(True)))
+        grad_copy = lambda t : nn.Parameter(t.clone().detach().requires_grad_(True))
+
+        posterior_w_means    = [grad_copy(t) for t in prior_w_means]
+        posterior_w_log_vars = [grad_copy(t) for t in prior_w_log_vars]
+        posterior_b_means    = [grad_copy(t) for t in prior_b_means]
+        posterior_b_log_vars = [grad_copy(t) for t in prior_b_log_vars]
 
         self.posterior = ((posterior_w_means, posterior_w_log_vars), (posterior_b_means, posterior_b_log_vars))
 
