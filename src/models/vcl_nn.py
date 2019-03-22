@@ -145,9 +145,9 @@ class VCL_NN(nn.Module):
         self.prior = ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars))
 
         head_prior_w_means = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_tasks)]
-        head_prior_w_log_vars = [torch.ones(self.layer_width, self.out_size) for t in range(self.n_tasks)]
+        head_prior_w_log_vars = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_tasks)]
         head_prior_b_means = [torch.zeros(self.out_size) for t in range(self.n_tasks)]
-        head_prior_b_log_vars = [torch.ones(self.out_size) for t in range(self.n_tasks)]
+        head_prior_b_log_vars = [torch.zeros(self.out_size) for t in range(self.n_tasks)]
 
         self.head_prior = ((head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars))
 
@@ -181,7 +181,7 @@ class VCL_NN(nn.Module):
         head_posterior_b_means = list(map(grad_copy, head_prior_b_means))
         head_posterior_b_log_vars = list(map(grad_copy, head_prior_b_log_vars))
 
-        self.head_posterior =
+        self.head_posterior = \
          ((head_posterior_w_means, head_posterior_w_log_vars),
           (head_posterior_b_means, head_posterior_b_log_vars))
 
