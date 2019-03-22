@@ -40,6 +40,13 @@ class VCL_NN(nn.Module):
     def prediction(self):
         pass
 
+    def concatenate_flattened(self, tensor_list):
+        """
+        helper for calculate_KL_term.  Given list of tensors, flattens each and
+        concatenates their values.
+        """
+        return torch.cat([torch.reshape(t, (-1,)) for t in tensor_list])
+
     def calculate_KL_term(self):
         """
         Calculates and returns the KL divergence of the new posterior and the previous
@@ -47,18 +54,14 @@ class VCL_NN(nn.Module):
         """
         # Concatenate w and b statistics into one tensor for ease of calculation
         ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars)) = self.prior
-        prior_means    = torch.cat([torch.reshape(prior_w_means[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
-                                   prior_b_means)
-        prior_log_vars = torch.cat([torch.reshape(prior_w_log_vars[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
-                                   prior_b_log_vars)
+        prior_means    = concatenate_flattened(prior_w_means + prior_b_means)
+        prior_log_vars = concatenate_flattened(prior_w_log_vars + prior_b_log_vars)
         prior_vars     = torch.exp(prior_log_vars)
 
         ((post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars)) = self.posterior
-        post_means     = torch.cat([torch.reshape(post_w_means[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
-                                   post_b_means)
-        post_log_vars  = torch.cat([torch.reshape(post_w_log_vars[i], (-1,)) for i in range(self.n_hidden_layers + 1)] +
-                                   post_b_log_vars)
-        post_vars      = torch.exp(post_log_vars)
+        post_means    = concatenate_flattened(post_w_means + post_b_means)
+        post_log_vars = concatenate_flattened(post_w_log_vars + post_b_log_vars)
+        post_vars     = torch.exp(post_log_vars)
 
         # Calculate KL for individual normal distributions over parameters
         KL_elementwise = \
@@ -76,7 +79,7 @@ class VCL_NN(nn.Module):
         mask = torch.zeros(preds.size(), dtype=torch.uint8)
         for i in range(preds.size()[0]):
             mask[i][y[i].item()] = 1
-        
+
         # Select probabilities, log and sum them
         y_preds = torch.masked_select(preds, mask)
         return torch.sum(torch.log(y_preds + EPSILON))
