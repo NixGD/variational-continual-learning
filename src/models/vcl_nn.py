@@ -50,6 +50,13 @@ class VCL_NN(nn.Module):
     def prediction(self):
         pass
 
+    def concatenate_flattened(self, tensor_list):
+        """
+        helper for calculate_KL_term.  Given list of tensors, flattens each and
+        concatenates their values.
+        """
+        return torch.cat([torch.reshape(t, (-1,)) for t in tensor_list])
+
     def calculate_KL_term(self):
         """
         Calculates and returns the KL divergence of the new posterior and the previous
@@ -63,23 +70,26 @@ class VCL_NN(nn.Module):
         ((head_prior_w_means, head_prior_w_log_vars),
          (head_prior_b_means, head_prior_b_log_vars)) = self.head_prior
 
-        prior_means = torch.cat([torch.reshape(tensor, (-1,)) for tensor in prior_w_means + head_prior_w_means] +
-                                prior_b_means + head_prior_b_means)
-        prior_log_vars  = torch.cat([torch.reshape(tensor, (-1,)) for tensor in prior_w_log_vars + head_prior_w_log_vars] +
-                                prior_b_log_vars + head_prior_b_log_vars)
+        prior_means    = self.concatenate_flattened(
+                                prior_w_means + head_prior_w_means +
+                                prior_b_means + head_prior_b_means )
+        prior_log_vars = self.concatenate_flattened(
+                                prior_w_log_vars + head_prior_w_log_vars +
+                                prior_b_log_vars + head_prior_b_log_vars )
+        prior_vars     = torch.exp(prior_log_vars)
 
         # Posterior
         ((post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars)) = self.posterior
         ((head_post_w_means, head_post_w_log_vars),
          (head_post_b_means, head_post_b_log_vars)) = self.head_posterior
-        post_means = torch.cat([torch.reshape(tensor, (-1,)) for tensor in post_w_means + head_post_w_means] +
-                                post_b_means + head_post_b_means)
-        post_log_vars= torch.cat(
-            [torch.reshape(tensor, (-1,)) for tensor in post_w_log_vars + head_post_w_log_vars] +
-                            post_b_log_vars + head_post_b_log_vars )
 
-        prior_vars     = torch.exp(prior_log_vars)
-        post_vars      = torch.exp(post_log_vars)
+        post_means    = self.concatenate_flattened(
+                                post_w_means + head_post_w_means +
+                                post_b_means + head_post_b_means )
+        post_log_vars = self.concatenate_flattened(
+                                post_w_log_vars + head_post_w_log_vars +
+                                post_b_log_vars + head_post_b_log_vars )
+        post_vars     = torch.exp(post_log_vars)
 
         # Calculate KL for individual normal distributions over parameters
         KL_elementwise = \
@@ -115,9 +125,9 @@ class VCL_NN(nn.Module):
         (prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars) = self.prior
         (post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars) = self.posterior
         prior_w_means.data.copy_(post_w_means.data)
-        prior_w_vars.data.copy_(post_w_log_vars.data)
+        prior_w_log_vars.data.copy_(post_w_log_vars.data)
         prior_b_means.data.copy_(post_b_means.data)
-        prior_b_vars.data.copy_(post_b_log_vars.data)
+        prior_b_log_vars.data.copy_(post_b_log_vars.data)
 
         (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.prior
         (head_posterior_w_means, head_posterior_w_vars), (head_posterior_b_means, head_posterior_b_vars) = self.prior
@@ -135,19 +145,19 @@ class VCL_NN(nn.Module):
         apply the exponential when needed in the forward pass.
         """
         # The first prior is initialised to be zero mean, unit variance
-        prior_w_means = [torch.zeros(self.input_size, self.layer_width)] + \
-                        [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)]
-        prior_w_log_vars  = [torch.zeros(self.input_size, self.layer_width)] + \
-                        [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)]
-        prior_b_means = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)]
-        prior_b_log_vars  = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)]
+
+        prior_w_means     = [torch.zeros(self.input_size, self.layer_width)] + \
+                            [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)]
+        prior_w_log_vars  = [torch.zeros_like(t) for t in prior_w_means]
+        prior_b_means     = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)]
+        prior_b_log_vars  = [torch.zeros_like(t) for t in prior_b_means]
 
         self.prior = ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars))
 
         head_prior_w_means = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_tasks)]
-        head_prior_w_log_vars = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_tasks)]
+        head_prior_w_log_vars = [torch.zeros_like(t) for t in head_prior_w_means]
         head_prior_b_means = [torch.zeros(self.out_size) for t in range(self.n_tasks)]
-        head_prior_b_log_vars = [torch.zeros(self.out_size) for t in range(self.n_tasks)]
+        head_prior_b_log_vars = [torch.zeros_like(t) for t in head_prior_b_means]
 
         self.head_prior = ((head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars))
 
@@ -166,20 +176,19 @@ class VCL_NN(nn.Module):
             self.register_buffer("head_prior_b_log_vars_" + str(i), head_prior_b_log_vars[i])
 
         # The first posterior is initialised to be the same as the first prior
-
         grad_copy = lambda t : nn.Parameter(t.clone().detach().requires_grad_(True))
 
-        posterior_w_means = list(map(grad_copy, prior_w_means))
-        posterior_w_log_vars = list(map(grad_copy, prior_w_log_vars))
-        posterior_b_means = list(map(grad_copy, prior_b_means))
-        posterior_b_log_vars = list(map(grad_copy, prior_b_log_vars))
+        posterior_w_means    = [grad_copy(t) for t in prior_w_means]
+        posterior_w_log_vars = [grad_copy(t) for t in prior_w_log_vars]
+        posterior_b_means    = [grad_copy(t) for t in prior_b_means]
+        posterior_b_log_vars = [grad_copy(t) for t in prior_b_log_vars]
 
         self.posterior = ((posterior_w_means, posterior_w_log_vars), (posterior_b_means, posterior_b_log_vars))
 
-        head_posterior_w_means = list(map(grad_copy, head_prior_w_means))
-        head_posterior_w_log_vars = list(map(grad_copy, head_prior_w_log_vars))
-        head_posterior_b_means = list(map(grad_copy, head_prior_b_means))
-        head_posterior_b_log_vars = list(map(grad_copy, head_prior_b_log_vars))
+        head_posterior_w_means    = [grad_copy(t) for t in head_prior_w_means]
+        head_posterior_w_log_vars = [grad_copy(t) for t in head_prior_w_log_vars]
+        head_posterior_b_means    = [grad_copy(t) for t in head_prior_b_means]
+        head_posterior_b_log_vars = [grad_copy(t) for t in head_prior_b_log_vars]
 
         self.head_posterior = \
          ((head_posterior_w_means, head_posterior_w_log_vars),
