@@ -94,9 +94,9 @@ class VCL_NN(nn.Module):
         (prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars) = self.prior
         (post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars) = self.posterior
         prior_w_means.data.copy_(post_w_means.data)
-        prior_w_vars.data.copy_(post_w_log_vars.data)
+        prior_w_log_vars.data.copy_(post_w_log_vars.data)
         prior_b_means.data.copy_(post_b_means.data)
-        prior_b_vars.data.copy_(post_b_log_vars.data)
+        prior_b_log_vars.data.copy_(post_b_log_vars.data)
 
     def init_variables(self):
         """
