@@ -54,13 +54,13 @@ class VCL_NN(nn.Module):
         """
         # Concatenate w and b statistics into one tensor for ease of calculation
         ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars)) = self.prior
-        prior_means    = concatenate_flattened(prior_w_means + prior_b_means)
-        prior_log_vars = concatenate_flattened(prior_w_log_vars + prior_b_log_vars)
+        prior_means    = self.concatenate_flattened(prior_w_means + prior_b_means)
+        prior_log_vars = self.concatenate_flattened(prior_w_log_vars + prior_b_log_vars)
         prior_vars     = torch.exp(prior_log_vars)
 
         ((post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars)) = self.posterior
-        post_means    = concatenate_flattened(post_w_means + post_b_means)
-        post_log_vars = concatenate_flattened(post_w_log_vars + post_b_log_vars)
+        post_means    = self.concatenate_flattened(post_w_means + post_b_means)
+        post_log_vars = self.concatenate_flattened(post_w_log_vars + post_b_log_vars)
         post_vars     = torch.exp(post_log_vars)
 
         # Calculate KL for individual normal distributions over parameters
@@ -113,10 +113,10 @@ class VCL_NN(nn.Module):
         prior_w_means     = [torch.zeros(self.input_size, self.layer_width)] + \
                             [torch.zeros(self.layer_width, self.layer_width) for i in range(self.n_hidden_layers - 1)] + \
                             [torch.zeros(self.layer_width, self.out_size)]
-        prior_w_log_vars  = [torch.zero_like(t) for t in prior_w_means]
+        prior_w_log_vars  = [torch.zeros_like(t) for t in prior_w_means]
         prior_b_means     = [torch.zeros(self.layer_width) for i in range(self.n_hidden_layers)] + \
                             [torch.zeros(self.out_size)]
-        prior_b_log_vars  = [torch.zero_like(t) for t in prior_b_means]
+        prior_b_log_vars  = [torch.zeros_like(t) for t in prior_b_means]
 
         self.prior = ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars))
 
