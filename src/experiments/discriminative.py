@@ -28,7 +28,7 @@ def permuted_mnist():
     transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(NUM_TASKS)]
 
     # create model
-    model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2, NUM_TASKS)
+    model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2, 1)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     # each task is a random permutation of MNIST
@@ -43,7 +43,8 @@ def permuted_mnist():
                 optimizer.zero_grad()
                 x, y_true = batch
 
-                loss = model.loss(x, y_true, task)
+                # Note there is only one head on the model used for this.
+                loss = model.loss(x, y_true, 0)
                 loss.backward()
                 optimizer.step()
 
