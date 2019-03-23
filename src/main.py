@@ -23,5 +23,5 @@ def main(experiment='all'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('experiment', help='Experiment to be run, can be one of: ' + str(list(EXP_OPTIONS.keys())))
-    parser.parse_args()
-    main()
+    args = parser.parse_args()
+    main(args.experiment)
