@@ -78,7 +78,7 @@ class VCL_NN(nn.Module):
         # Make mask to select probabilities associated with actual y values
         mask = torch.zeros(preds.size(), dtype=torch.uint8)
         for i in range(preds.size()[0]):
-            mask[i][y[i].item()] = 1
+            mask[i][int(y[i].item())] = 1
 
         # Select probabilities, log and sum them
         y_preds = torch.masked_select(preds, mask)
