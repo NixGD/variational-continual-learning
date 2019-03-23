@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data as data
 from copy import deepcopy
 
 class Coreset():
@@ -10,16 +10,16 @@ class Coreset():
 
     def __init__(self, size=0):
         self.size = size
-        self.coreset = data.DataSet()
+        self.coreset = None
 
-    def select(self, data: Dataset, task_id: int):
+    def select(self, d: data.Dataset, task_id: int):
         """
         Given a torch dataset, will choose k datapoints.  Will then update
         the coreset with these datapoints.
         Returns: the subset that was not selected as a torch dataset.
         """
 
-        return data
+        return d
 
     def coreset_train(self, m, optimizer, batch_size = 256):
         """
@@ -27,12 +27,12 @@ class Coreset():
         be a deep copy, except when coreset is empty (when it will be identical)
         """
 
-        if not len(self.coreset):
+        if self.coreset is not None:
             return m
 
         model = deepcopy(m)
 
-        for batch in DataLoader(self.coreset, batch_size):
+        for batch in data.DataLoader(self.coreset, batch_size):
             optimizer.zero_grad()
             x, y_true, task = batch
 
@@ -41,3 +41,22 @@ class Coreset():
             optimizer.step()
 
         return model
+
+
+class RandomCoreset(Coreset):
+
+    __init__(self, size=100):
+        Coreset.__init__(size)
+
+    def select(self, d : data.Dataset, task_id : int):
+        new_cs_data, non_cs = data.random_split(d, [self.size, len(self.coreset)])
+        new_cs = data.TensorDataset(
+                        new_cs_data,
+                        torch.full((len(new_cs_data)), task_id) )
+
+        if self.coreset is None:
+            self.corset = new_cs
+        else:
+            self.coreset = data.ConcatDataset((self.corset, new_cs))
+
+    return non_cs
