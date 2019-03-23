@@ -179,3 +179,6 @@ def split_not_mnist():
             total = sample_idx
 
         task_accuracies.append(correct / total)
+
+        write_as_json('disc_s_n_mnist/accuracy.txt', task_accuracies)
+        save_model(model, 'disc_s_n_mnist/model.pth')
