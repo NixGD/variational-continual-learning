@@ -7,6 +7,7 @@ from models.vcl_nn import VCL_NN
 from util.transforms import Flatten, Permute
 from util.samplers import FilteringSampler
 from util.outputs import write_as_json, save_model
+from util.datasets import NOTMNIST
 from tqdm import tqdm
 
 # input and output dimensions of an FCFF MNIST classifier
@@ -127,4 +128,54 @@ def split_mnist():
 
 
 def split_not_mnist():
-    pass
+    """
+        Runs the 'Split not MNIST' experiment from the VCL paper, in which each task
+        is a binary classification task carried out on a subset of the not MNIST
+        character recognition dataset.
+    """
+    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=Flatten(), limit_size=50000)
+    not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=Flatten())
+
+    # create model
+    # fixme needs to be multi-headed
+    # todo does it make sense to do binary classification with out_size=2 ?
+    model = VCL_NN(input_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2)
+    optimizer = optim.Adam(model.parameters(), lr=LR)
+
+    # each task is a binary classification task for a different pair of characters
+    for task_idx, label_pair in enumerate(LABEL_PAIRS_SPLIT, 0):
+        print('TASK ' + str(task_idx) + ', chars (' + chr(label_pair[0] + 65) + ', ' + chr(label_pair[1] + 65) + ')')
+
+        train_loader = DataLoader(not_mnist_train, BATCH_SIZE, sampler=FilteringSampler(not_mnist_train, label_pair))
+
+        for _ in tqdm(range(EPOCHS), 'Epochs: '):
+            for batch in train_loader:
+                optimizer.zero_grad()
+                x, y_true = batch
+
+                # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
+                y_true = y_true == label_pair[1]
+
+                loss = model.loss(x, y_true)
+                loss.backward()
+                optimizer.step()
+
+    # test
+    task_accuracies = []
+    for task_idx, label_pair in enumerate(tqdm(LABEL_PAIRS_SPLIT, 'Testing task: '), 0):
+        test_loader = DataLoader(not_mnist_test, batch_size=1, sampler=FilteringSampler(not_mnist_test, label_pair))
+        correct = 0
+        total = 0
+
+        for sample_idx, sample in enumerate(test_loader, 1):
+            # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
+            x, y_true = sample
+            y_true = y_true == label_pair[1]
+
+            y_pred = torch.round(model.prediction(x))
+
+            if y_pred == y_true:
+                correct += 1
+            total = sample_idx
+
+        task_accuracies.append(correct / total)
