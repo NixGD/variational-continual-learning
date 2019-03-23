@@ -37,7 +37,7 @@ class VCL_NN(nn.Module):
 
         return x
 
-    def prediction(self):
+    def prediction(self, x):
         pass
 
     def concatenate_flattened(self, tensor_list):

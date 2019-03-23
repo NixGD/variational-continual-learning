@@ -58,7 +58,7 @@ def permuted_mnist():
 
         for sample in test_loader:
             x, y_true = sample
-            y_pred = torch.argmax(model(x))
+            y_pred = torch.argmax(model.prediction(x))
 
             if y_pred == y_true:
                 correct += 1
@@ -114,7 +114,7 @@ def split_mnist():
             x, y_true = sample
             y_true = y_true == label_pair[1]
 
-            y_pred = torch.round(model(x))
+            y_pred = torch.round(model.prediction(x))
 
             if y_pred == y_true:
                 correct += 1
