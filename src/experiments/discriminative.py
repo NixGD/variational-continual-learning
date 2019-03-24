@@ -3,7 +3,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from torchvision.transforms import Compose
-from models.vcl_nn import VCL_NN
+from models.vcl_nn import DiscriminativeVCL
 from util.transforms import Flatten, Permute
 from util.samplers import FilteringSampler
 from util.outputs import write_as_json, save_model
@@ -32,7 +32,7 @@ def permuted_mnist():
     transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(NUM_TASKS_PERM)]
 
     # create model, single-headed in permuted MNIST experiment
-    model = VCL_NN(input_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2, n_tasks=1)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2, n_tasks=1)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     # each task is classification of MNIST images with permuted pixels
@@ -84,7 +84,7 @@ def split_mnist():
     # create model
     # fixme needs to be multi-headed
     # todo does it make sense to do binary classification with out_size=2 ?
-    model = VCL_NN(input_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2, n_tasks=5)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     # each task is a binary classification task for a different pair of digits
@@ -141,7 +141,7 @@ def split_not_mnist():
     # create model
     # fixme needs to be multi-headed
     # todo does it make sense to do binary classification with out_size=2 ?
-    model = VCL_NN(input_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     # each task is a binary classification task for a different pair of characters
