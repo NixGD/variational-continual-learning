@@ -73,9 +73,8 @@ class DiscriminativeVCL(nn.Module):
         prior_b_log_vars.data.copy_(post_b_log_vars.data)
 
         # set the value of the head prior to be the current value of the posterior
-        # fixme shouldn't this be self.head_prior and self.head_posterior ?
-        (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.prior
-        (head_posterior_w_means, head_posterior_w_log_vars), (head_posterior_b_means, head_posterior_b_log_vars) = self.prior
+        (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.head_prior
+        (head_posterior_w_means, head_posterior_w_log_vars), (head_posterior_b_means, head_posterior_b_log_vars) = self.head_posterior
         head_prior_w_means.data.copy_(head_posterior_w_means.data)
         head_prior_w_log_vars.data.copy_(head_posterior_w_log_vars.data)
         head_prior_b_means.data.copy_(head_posterior_b_means.data)
