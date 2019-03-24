@@ -1,6 +1,7 @@
 import torch
 import torch.utils.data as data
 from copy import deepcopy
+import numpy as np
 
 class Coreset():
     """
@@ -11,6 +12,7 @@ class Coreset():
     def __init__(self, size=0):
         self.size = size
         self.coreset = None
+        self.coreset_task_ids = None
 
     def select(self, d: data.Dataset, task_id: int):
         """
@@ -49,9 +51,14 @@ class RandomCoreset(Coreset):
         super().__init__(size)
 
     def select(self, d : data.Dataset, task_id : int):
+
         new_cs_data, non_cs = data.random_split(d, [self.size, max(0,len(d)-self.size)])
+
+        new_cs_x = torch.tensor([x for x,y in new_cs_data])
+        new_cs_y = torch.tensor([y for x,y in new_cs_data])
+
         new_cs = data.TensorDataset(
-                        new_cs_data,
+                        new_cs_x, new_cs_y,
                         torch.full((len(new_cs_data),), task_id)
                         )
 

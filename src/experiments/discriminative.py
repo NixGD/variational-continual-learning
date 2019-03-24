@@ -36,13 +36,14 @@ def permuted_mnist():
     # create model, single-headed in permuted MNIST experiment
     model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2, n_tasks=1)
     optimizer = optim.Adam(model.parameters(), lr=LR)
+    coreset = RandomCoreset(size=100)
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(NUM_TASKS_PERM):
         print('TASK ' + str(task))
 
         mnist_train = MNIST(root='../data/', train=True, download=True, transform=transforms[task])
-        non_coreset_data = coreset.select(mnist_train, 1)
+        non_coreset_data = coreset.select(mnist_train, task_id=0)
         train_loader = DataLoader(non_coreset_data, BATCH_SIZE)
 
         for _ in tqdm(range(EPOCHS), 'Epochs: '):
