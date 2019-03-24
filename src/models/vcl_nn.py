@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from util.operations import concatenate_flattened
+from layers.distributional import DistributionalLinear
+
 
 EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
 
@@ -88,9 +90,9 @@ class VCL_NN(nn.Module):
         predictions = self.forward(x)
 
         # Make mask to select probabilities associated with actual y values
-        mask = torch.zeros(predictions.size(), dtype=torch.uint8)
-        for i in range(predictions.size()[0]):
-            mask[i][y[i].item()] = 1
+        mask = torch.zeros(preds.size(), dtype=torch.uint8)
+        for i in range(preds.size()[0]):
+            mask[i][int(y[i].item())] = 1
 
         # Select probabilities, log and sum them
         y_preds = torch.masked_select(predictions, mask)
@@ -156,3 +158,43 @@ class VCL_NN(nn.Module):
             self.register_parameter("posterior_w_log_vars_" + str(i), posterior_w_log_vars[i])
             self.register_parameter("posterior_b_means_" + str(i), posterior_b_means[i])
             self.register_parameter("posterior_b_log_vars_" + str(i), posterior_b_log_vars[i])
+
+
+class GenerativeVCL(nn.Module):
+    """
+    A Bayesian neural network which is updated using variational inference
+    methods, and which is multi-headed at the input end. Suitable for
+    continual learning of generative tasks.
+    """
+
+    def __init__(self, z_dim, h_dim, x_dim, n_heads, n_hidden_layers=(1, 1), hidden_dims=(500, 500)):
+        super().__init__()
+        # dimensions
+        self.z_dim = z_dim
+        self.h_dim = h_dim
+        self.x_dim = x_dim
+        self.n_hidden_layers = n_hidden_layers
+        self.hidden_widths = hidden_dims
+        # layers in task-specific input heads
+        self.heads = [{
+            'head_linear_1': DistributionalLinear(z_dim, hidden_dims[0]),
+            'head_linear_2': DistributionalLinear(hidden_dims[1], h_dim)
+        } for _ in range(n_heads)]
+        # layers in shared part of network
+        self.shared_linear_1 = DistributionalLinear(h_dim, hidden_dims[1])
+        self.shared_linear_2 = DistributionalLinear(hidden_dims[1], x_dim)
+
+    def forward(self, x, head_idx):
+        head_linear_1 = self.heads[head_idx]['head_linear_1']
+        head_linear_2 = self.heads[head_idx]['head_linear_2']
+
+        x = F.relu(head_linear_1(x))
+        x = F.relu(head_linear_2(x))
+        x = F.relu(self.shared_linear_1(x))
+        x = F.relu(self.shared_linear_2(x))
+
+        return x
+
+    def loss(self):
+        # todo
+        pass
