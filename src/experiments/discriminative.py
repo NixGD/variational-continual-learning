@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from torchvision.transforms import Compose
 from models.vcl_nn import VCL_NN
+from models.coreset import RandomCoreset
 from util.transforms import Flatten, Permute
 from util.outputs import write_as_json, save_model
 from tqdm import tqdm
@@ -18,6 +19,7 @@ BATCH_SIZE = 256
 LR = 0.001
 NUM_TASKS = 10
 
+CORESET_SIZE = 100
 
 def permuted_mnist():
     """
@@ -28,27 +30,31 @@ def permuted_mnist():
     transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(NUM_TASKS)]
 
     # create model
-    model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2, NUM_TASKS)
+    model = VCL_NN(MNIST_FLATTENED_DIM, MNIST_N_CLASSES, 100, 2, 1)
     optimizer = optim.Adam(model.parameters(), lr=LR)
+
+    coreset = RandomCoreset(CORESET_SIZE)
 
     # each task is a random permutation of MNIST
     for task in range(NUM_TASKS):
         print('TASK ' + str(task))
 
         mnist_train = MNIST(root='../data/', train=True, download=True, transform=transforms[task])
-        train_loader = DataLoader(mnist_train, BATCH_SIZE)
+        non_coreset_data = coreset.select(mnist_train, 1)
+        train_loader = DataLoader(non_coreset_data, BATCH_SIZE)
 
         for _ in tqdm(range(EPOCHS), 'Epochs: '):
             for batch in train_loader:
                 optimizer.zero_grad()
                 x, y_true = batch
 
-                loss = model.loss(x, y_true, task)
+                loss = model.loss(x, y_true, 1)
                 loss.backward()
                 optimizer.step()
 
     # test
     task_accuracies = []
+    model_cs_trained = coreset.coreset_train(model, optimizer)
     for task in tqdm(range(NUM_TASKS), 'Testing task: '):
         mnist_test = MNIST(root='../data/', train=False, download=True, transform=transforms[task])
         test_loader = DataLoader(mnist_test, batch_size=1)
@@ -56,7 +62,7 @@ def permuted_mnist():
 
         for sample in test_loader:
             x, y_true = sample
-            y_pred = torch.argmax(model(x))
+            y_pred = torch.argmax(model_cs_trained(x))
 
             if y_pred == y_true:
                 correct += 1
