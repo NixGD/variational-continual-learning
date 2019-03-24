@@ -10,7 +10,8 @@ class FilteringSampler(Sampler):
     def __init__(self, data_source, labels):
         super().__init__(data_source)
         self.data_source = data_source
-        self.labels = labels
+        self.labels = []
+        self.labels.extend(labels)
 
         unfiltered_indices = [idx if img[1] in self.labels else None for idx, img in enumerate(self.data_source, 0)]
         self.indices = list(filter(lambda idx: idx is not None, unfiltered_indices))
