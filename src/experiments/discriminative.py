@@ -89,7 +89,7 @@ def split_mnist():
     # create model
     # fixme needs to be multi-headed
     # todo does it make sense to do binary classification with out_size=2 ?
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=5, layer_width=100, n_hidden_layers=2, n_tasks=5)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2, n_tasks=5)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     coreset = RandomCoreset(size=CORESET_SIZE)
