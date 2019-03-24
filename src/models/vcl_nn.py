@@ -40,7 +40,7 @@ class DiscriminativeVCL(nn.Module):
         for weight, bias in sampled_layers:
             x = F.relu(x @ weight + bias)
 
-        head_weight, head_bias = sampled_head_layers[task]
+        head_weight, head_bias = list(sampled_head_layers)[task]
         x = F.relu(x @ head_weight + head_bias)
 
         # Apply final softmax
