@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data as data
+import torch.utils.data as data
 from copy import deepcopy
 
 class Coreset():
@@ -45,18 +45,19 @@ class Coreset():
 
 class RandomCoreset(Coreset):
 
-    __init__(self, size=100):
-        Coreset.__init__(size)
+    def __init__(self, size):
+        super().__init__(size)
 
     def select(self, d : data.Dataset, task_id : int):
-        new_cs_data, non_cs = data.random_split(d, [self.size, len(self.coreset)])
+        new_cs_data, non_cs = data.random_split(d, [self.size, max(0,len(d)-self.size)])
         new_cs = data.TensorDataset(
                         new_cs_data,
-                        torch.full((len(new_cs_data)), task_id) )
+                        torch.full((len(new_cs_data),), task_id)
+                        )
 
         if self.coreset is None:
             self.corset = new_cs
         else:
             self.coreset = data.ConcatDataset((self.corset, new_cs))
 
-    return non_cs
+        return non_cs
