@@ -12,16 +12,21 @@ class VCL_NN(nn.Module):
     """A Bayesian multi-head neural network which updates its parameters using
        variational inference."""
 
-    def __init__(self, input_size: int, out_size: int, layer_width: int, n_hidden_layers: int):
+    def __init__(self, input_size: int, out_size: int, layer_width: int, n_hidden_layers: int, n_tasks: int):
         super().__init__()
         self.input_size = input_size
         self.out_size = out_size
         self.n_hidden_layers = n_hidden_layers
         self.layer_width = layer_width
-        self.task_id = 0
-        self._init_variables()
+        self.n_tasks = n_tasks
 
-    def forward(self, x):
+        self.prior, self.posterior = None, None
+        self.head_prior, self.head_posterior = None, None
+
+        self._init_variables()
+        self.task_id = 0
+
+    def forward(self, x, task):
         """ Forward pass of the model on an input. """
         # sample layer parameters from posterior distribution
         (w_means, w_log_vars), (b_means, b_log_vars) = self.posterior
@@ -31,18 +36,24 @@ class VCL_NN(nn.Module):
         for weight, bias in sampled_layers:
             x = F.relu(x @ weight + bias)
 
+        (head_w_mean, head_w_log_vars), (head_b_means, head_b_log_vars) = self.head_posterior
+        sampled_head_weights = self.sample_from(head_w_mean[task], head_w_log_vars[task])
+        sampled_head_bias = self.sample_from(head_b_means[task], head_b_log_vars[task])
+
+        x = F.relu(x @ sampled_head_weights + sampled_head_bias)
+
         # Apply final softmax
         sm = torch.nn.Softmax(dim=1)
         x = sm(x)
 
         return x
 
-    def loss(self, x, y) -> torch.Tensor:
+    def loss(self, x, y, task) -> torch.Tensor:
         """
         Returns the loss of the model, as described in equation 4 of the Variational
         Continual Learning paper (https://arxiv.org/abs/1710.10628).
         """
-        return self._calculate_kl_term() - self._log_prob(x, y)
+        return self._calculate_kl_term() - self._log_prob(x, y, task)
 
     def predict(self):
         pass
@@ -61,21 +72,45 @@ class VCL_NN(nn.Module):
         prior_b_means.data.copy_(post_b_means.data)
         prior_b_log_vars.data.copy_(post_b_log_vars.data)
 
+        (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.prior
+        (head_posterior_w_means, head_posterior_w_log_vars), (head_posterior_b_means, head_posterior_b_log_vars) = self.prior
+        head_prior_w_means.data.copy_(head_posterior_w_means.data)
+        head_prior_w_log_vars.data.copy_(head_posterior_w_log_vars.data)
+        head_prior_b_means.data.copy_(head_posterior_b_means.data)
+        head_prior_b_log_vars.data.copy_(head_posterior_b_log_vars.data)
+
     def _calculate_kl_term(self):
         """
         Calculates and returns the KL divergence of the new posterior and the previous
         iteration's posterior. See equation L3, slide 14.
         """
         # Concatenate w and b statistics into one tensor for ease of calculation
-        ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars)) = self.prior
-        prior_means    = concatenate_flattened(prior_w_means + prior_b_means)
-        prior_log_vars = concatenate_flattened(prior_w_log_vars + prior_b_log_vars)
-        prior_vars     = torch.exp(prior_log_vars)
 
+        # Prior
+        ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars)) = self.prior
+        ((head_prior_w_means, head_prior_w_log_vars),
+         (head_prior_b_means, head_prior_b_log_vars)) = self.head_prior
+
+        prior_means = concatenate_flattened(
+                                prior_w_means + head_prior_w_means +
+                                prior_b_means + head_prior_b_means)
+        prior_log_vars = concatenate_flattened(
+                                prior_w_log_vars + head_prior_w_log_vars +
+                                prior_b_log_vars + head_prior_b_log_vars)
+        prior_vars = torch.exp(prior_log_vars)
+
+        # Posterior
         ((post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars)) = self.posterior
-        post_means    = concatenate_flattened(post_w_means + post_b_means)
-        post_log_vars = concatenate_flattened(post_w_log_vars + post_b_log_vars)
-        post_vars     = torch.exp(post_log_vars)
+        ((head_post_w_means, head_post_w_log_vars),
+         (head_post_b_means, head_post_b_log_vars)) = self.head_posterior
+
+        post_means = concatenate_flattened(
+                                post_w_means + head_post_w_means +
+                                post_b_means + head_post_b_means )
+        post_log_vars = concatenate_flattened(
+                                post_w_log_vars + head_post_w_log_vars +
+                                post_b_log_vars + head_post_b_log_vars )
+        post_vars = torch.exp(post_log_vars)
 
         # Calculate KL for individual normal distributions over parameters
         kl_elementwise = \
@@ -86,12 +121,12 @@ class VCL_NN(nn.Module):
         # Sum KL over all parameters
         return 0.5 * kl_elementwise.sum()
 
-    def _log_prob(self, x, y):
-        predictions = self.forward(x)
+    def _log_prob(self, x, y, task):
+        predictions = self.forward(x, task)
 
         # Make mask to select probabilities associated with actual y values
-        mask = torch.zeros(preds.size(), dtype=torch.uint8)
-        for i in range(preds.size()[0]):
+        mask = torch.zeros(predictions.size(), dtype=torch.uint8)
+        for i in range(predictions.size()[0]):
             mask[i][int(y[i].item())] = 1
 
         # Select probabilities, log and sum them
@@ -104,11 +139,14 @@ class VCL_NN(nn.Module):
         for layer_n in range(self.n_hidden_layers + 1):
             w_epsilons = torch.randn_like(w_means[layer_n])
             b_epsilons = torch.randn_like(b_means[layer_n])
-
             sampled_weights.append(w_means[layer_n] + w_epsilons * torch.exp(0.5 * w_log_vars[layer_n]))
             sampled_bias.append(b_means[layer_n] + b_epsilons * torch.exp(0.5 * b_log_vars[layer_n]))
-
         return zip(sampled_weights, sampled_bias)
+
+    def sample_from(self, means, log_vars):
+        """ Helper for forward calculations """
+        epsilons = torch.randn_like(log_vars)
+        return means + epsilons * torch.exp(0.5 * log_vars)
 
     def _init_variables(self):
         """
@@ -123,14 +161,19 @@ class VCL_NN(nn.Module):
         """
         # The initial prior over the parameters has zero mean, unit variance (i.e. log variance 0)
         prior_w_means     = [torch.zeros(self.input_size, self.layer_width)] + \
-                            [torch.zeros(self.layer_width, self.layer_width) for _ in range(self.n_hidden_layers - 1)] + \
-                            [torch.zeros(self.layer_width, self.out_size)]
+                            [torch.zeros(self.layer_width, self.layer_width) for _ in range(self.n_hidden_layers - 1)]
         prior_w_log_vars  = [torch.zeros_like(t) for t in prior_w_means]
-        prior_b_means     = [torch.zeros(self.layer_width) for _ in range(self.n_hidden_layers)] + \
-                            [torch.zeros(self.out_size)]
+        prior_b_means     = [torch.zeros(self.layer_width) for _ in range(self.n_hidden_layers)]
         prior_b_log_vars  = [torch.zeros_like(t) for t in prior_b_means]
 
         self.prior = ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars))
+
+        head_prior_w_means = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_tasks)]
+        head_prior_w_log_vars = [torch.zeros_like(t) for t in head_prior_w_means]
+        head_prior_b_means = [torch.zeros(self.out_size) for t in range(self.n_tasks)]
+        head_prior_b_log_vars = [torch.zeros_like(t) for t in head_prior_b_means]
+
+        self.head_prior = ((head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars))
 
         # The initial posterior is initialised to be the same as the first prior
         grad_copy = lambda t: nn.Parameter(t.clone().detach().requires_grad_(True))
@@ -142,22 +185,43 @@ class VCL_NN(nn.Module):
 
         self.posterior = ((posterior_w_means, posterior_w_log_vars), (posterior_b_means, posterior_b_log_vars))
 
+        head_posterior_w_means    = [grad_copy(t) for t in head_prior_w_means]
+        head_posterior_w_log_vars = [grad_copy(t) for t in head_prior_w_log_vars]
+        head_posterior_b_means    = [grad_copy(t) for t in head_prior_b_means]
+        head_posterior_b_log_vars = [grad_copy(t) for t in head_prior_b_log_vars]
+
+        self.head_posterior = \
+         ((head_posterior_w_means, head_posterior_w_log_vars),
+          (head_posterior_b_means, head_posterior_b_log_vars))
+
         # finally, we register the prior and the posterior with the nn.Module. The
         # prior values are registered as buffers, which indicates to PyTorch that they
         # represent persistent state which should not be updated by the optimizer. The
         # posteriors are registered as parameters, which on the other hand are to
         # be modified by the optimizer.
-        for i in range(self.n_hidden_layers + 1):
+        for i in range(self.n_hidden_layers):
             self.register_buffer("prior_w_means_" + str(i), prior_w_means[i])
             self.register_buffer("prior_w_log_vars_" + str(i), prior_w_log_vars[i])
             self.register_buffer("prior_b_means_" + str(i), prior_b_means[i])
             self.register_buffer("prior_b_log_vars_" + str(i), prior_b_log_vars[i])
 
-        for i in range(self.n_hidden_layers + 1):
+        for i in range(self.n_tasks):
+            self.register_buffer("head_prior_w_means_" + str(i), head_prior_w_means[i])
+            self.register_buffer("head_prior_w_log_vars_" + str(i), head_prior_w_log_vars[i])
+            self.register_buffer("head_prior_b_means_" + str(i), head_prior_b_means[i])
+            self.register_buffer("head_prior_b_log_vars_" + str(i), head_prior_b_log_vars[i])
+
+        for i in range(self.n_hidden_layers):
             self.register_parameter("posterior_w_means_" + str(i), posterior_w_means[i])
             self.register_parameter("posterior_w_log_vars_" + str(i), posterior_w_log_vars[i])
             self.register_parameter("posterior_b_means_" + str(i), posterior_b_means[i])
             self.register_parameter("posterior_b_log_vars_" + str(i), posterior_b_log_vars[i])
+
+        for i in range(self.n_tasks):
+            self.register_parameter("head_posterior_w_means_" + str(i), head_posterior_w_means[i])
+            self.register_parameter("head_posterior_w_log_vars_" + str(i), head_posterior_w_log_vars[i])
+            self.register_parameter("head_posterior_b_means_" + str(i), head_posterior_b_means[i])
+            self.register_parameter("head_posterior_b_log_vars_" + str(i), head_posterior_b_log_vars[i])
 
 
 class GenerativeVCL(nn.Module):

@@ -10,6 +10,7 @@ from util.outputs import write_as_json, save_model
 from util.datasets import NOTMNIST
 from tqdm import tqdm
 
+
 # input and output dimensions of an FCFF MNIST classifier
 MNIST_FLATTENED_DIM = 28 * 28
 MNIST_N_CLASSES = 10
@@ -31,7 +32,7 @@ def permuted_mnist():
     transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(NUM_TASKS_PERM)]
 
     # create model, single-headed in permuted MNIST experiment
-    model = VCL_NN(input_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2)
+    model = VCL_NN(input_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2, n_tasks=1)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     # each task is classification of MNIST images with permuted pixels
@@ -46,7 +47,8 @@ def permuted_mnist():
                 optimizer.zero_grad()
                 x, y_true = batch
 
-                loss = model.loss(x, y_true)
+                # Note there is only one head on the model used for this.
+                loss = model.loss(x, y_true, 0)
                 loss.backward()
                 optimizer.step()
 
@@ -59,7 +61,7 @@ def permuted_mnist():
 
         for sample in test_loader:
             x, y_true = sample
-            y_pred = torch.argmax(model.prediction(x))
+            y_pred = torch.argmax(model.predict(x))
 
             if y_pred == y_true:
                 correct += 1
