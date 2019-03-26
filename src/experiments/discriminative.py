@@ -7,7 +7,6 @@ from models.vcl_nn import DiscriminativeVCL
 from models.coreset import RandomCoreset
 from util.experiment_utils import run_task
 from util.transforms import Flatten, Permute
-from util.samplers import FilteringSampler
 from util.outputs import write_as_json, save_model
 from util.datasets import NOTMNIST
 
