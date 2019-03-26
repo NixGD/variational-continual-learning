@@ -33,9 +33,9 @@ def run_task(model, train_data, train_task_ids,
     # test
     model_cs_trained = coreset.coreset_train(model, optimizer)
     task_accuracies = []
-    for test_task_idx in range(task_idx):
+    for test_task_idx in range(task_idx+1):
 
-        task_data = task_subset(test_data, test_task_idicies, test_task_idx)
+        task_data = task_subset(test_data, test_task_ids, test_task_idx)
 
         x      = torch.Tensor([x for x, _ in task_data])
         y_true = torch.Tensor([y for _, y in task_data])
@@ -52,4 +52,4 @@ def run_task(model, train_data, train_task_ids,
         task_accuracies.append(acc)
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
-    save_model(model, save_as + '/model_task_' + task_idx + '.pth')
+    save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')
