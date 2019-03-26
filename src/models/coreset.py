@@ -29,7 +29,7 @@ class Coreset():
         be a deep copy, except when coreset is empty (when it will be identical)
         """
 
-        if self.coreset is not None:
+        if self.coreset is None:
             return m
 
         model = deepcopy(m)
