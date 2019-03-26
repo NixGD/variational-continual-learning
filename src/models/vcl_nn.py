@@ -56,8 +56,9 @@ class DiscriminativeVCL(nn.Module):
         """
         return self._calculate_kl_term() - self._log_prob(x, y, task)
 
-    def predict(self):
-        pass
+    def prediction(self, x, task):
+        """ Returns an integer between 0 and self.out_size """
+        torch.argmax(self.forward(x, task))
 
     def reset_for_new_task(self):
         """
