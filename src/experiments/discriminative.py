@@ -1,15 +1,14 @@
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 from torchvision.transforms import Compose
+from torch.utils.data import ConcatDataset
 from models.vcl_nn import DiscriminativeVCL
 from models.coreset import RandomCoreset
+from util.experiment_utils import run_task
 from util.transforms import Flatten, Permute
-from util.samplers import FilteringSampler
 from util.outputs import write_as_json, save_model
 from util.datasets import NOTMNIST
-from tqdm import tqdm
 
 
 # input and output dimensions of an FCFF MNIST classifier
@@ -38,44 +37,31 @@ def permuted_mnist():
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
+    mnist_train = ConcatDataset(
+        [MNIST(root='../data/', train=True, download=True, transform=t) for t in transforms]
+    )
+    task_size = len(mnist_train) // NUM_TASKS_PERM
+    train_task_ids = torch.cat(
+        [torch.full((task_size,), id) for id in range(NUM_TASKS_PERM)]
+    )
+
+    mnist_test = ConcatDataset(
+        [MNIST(root='../data/', train=False, download=True, transform=t) for t in transforms]
+    )
+    task_size = len(mnist_test) // NUM_TASKS_PERM
+    test_task_ids = torch.cat(
+        [torch.full((task_size,), id) for id in range(NUM_TASKS_PERM)]
+    )
+
     # each task is classification of MNIST images with permuted pixels
     for task in range(NUM_TASKS_PERM):
-        print('TASK ' + str(task))
-
-        mnist_train = MNIST(root='../data/', train=True, download=True, transform=transforms[task])
-        non_coreset_data = coreset.select(mnist_train, task_id=0)
-        train_loader = DataLoader(non_coreset_data, BATCH_SIZE)
-
-        for _ in tqdm(range(EPOCHS), 'Epochs: '):
-            for batch in train_loader:
-                optimizer.zero_grad()
-                x, y_true = batch
-
-                # Note there is only one head on the model used for this.
-                loss = model.loss(x, y_true, 0)
-                loss.backward()
-                optimizer.step()
-
-    # test
-    task_accuracies = []
-    model_cs_trained = coreset.coreset_train(model, optimizer)
-    for task in tqdm(range(NUM_TASKS_PERM), 'Testing task: '):
-        mnist_test = MNIST(root='../data/', train=False, download=True, transform=transforms[task])
-        test_loader = DataLoader(mnist_test, batch_size=1)
-        correct = 0
-
-        for sample in test_loader:
-            x, y_true = sample
-            y_pred = model_cs_trained.prediction(x, 0)
-
-            if y_pred == y_true:
-                correct += 1
-
-        task_accuracies.append(correct / len(mnist_test))
-
-    write_as_json('disc_p_mnist/accuracy.txt', task_accuracies)
-    save_model(model, 'disc_p_mnist/model.pth')
-
+        run_task(
+            model = model, train_data = mnist_train,
+            train_task_ids = train_task_ids, test_data = mnist_test,
+            test_task_ids = test_task_ids, task_idx = task, coreset= coreset,
+            optimizer = optimizer, epochs = EPOCHS, batch_size = BATCH_SIZE,
+            save_as = "disc_p_mnist", multiheaded=False
+        )
 
 def split_mnist():
     """
@@ -94,50 +80,27 @@ def split_mnist():
 
     coreset = RandomCoreset(size=CORESET_SIZE)
 
+    label_to_task_mapping = {
+        0: 0,  1: 0,
+        2: 1,  3: 1,
+        4: 2,  5: 2,
+        6: 3,  7: 3,
+        8: 4,  9: 4,
+    }
+
+    train_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_train])
+    test_task_ids  = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_test])
+
     # each task is a binary classification task for a different pair of digits
-    for task_idx, label_pair in enumerate(LABEL_PAIRS_SPLIT, 0):
-        print('TASK ' + str(task_idx) + ', digits ' + str(label_pair))
-
-        task_idicies = [idx for idx, img in enumerate(mnist_train) if img[1] in label_pair]
-        task_data = Subset(mnist_train, task_idicies)
-        non_coreset_data = coreset.select(task_data, task_id=task_idx)
-        train_loader = DataLoader(non_coreset_data, BATCH_SIZE)
-
-        for _ in tqdm(range(EPOCHS), 'Epochs: '):
-            for batch in train_loader:
-                optimizer.zero_grad()
-                x, y_true = batch
-
-                # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
-                y_true = y_true == label_pair[1]
-
-                loss = model.loss(x, y_true, task_idx)
-                loss.backward()
-                optimizer.step()
-
-    # test
-    model_cs_trained = coreset.coreset_train(model, optimizer)
-    task_accuracies = []
-    for task_idx, label_pair in enumerate(tqdm(LABEL_PAIRS_SPLIT, 'Testing task: '), 0):
-        test_loader = DataLoader(mnist_test, batch_size=1, sampler=FilteringSampler(mnist_train, label_pair))
-        correct = 0
-        total = 0
-
-        for sample_idx, sample in enumerate(test_loader, 1):
-            # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
-            x, y_true = sample
-            y_true = y_true == label_pair[1]
-
-            y_pred = model_cs_trained.prediction(x, 0)
-
-            if y_pred == y_true:
-                correct += 1
-            total = sample_idx
-
-        task_accuracies.append(correct / total)
-
-    write_as_json('disc_s_mnist/accuracy.txt', task_accuracies)
-    save_model(model, 'disc_s_mnist/model.pth')
+    for task_idx in range(5):
+        binarize_y = lambda y: y == (2*task_idx + 1)
+        run_task(
+            model = model, train_data = mnist_train, train_task_ids = train_task_ids,
+            test_data = mnist_test, test_task_ids = test_task_ids, optimizer = optimizer,
+            coreset=coreset, task_idx = task_idx, epochs = EPOCHS,
+            batch_size = BATCH_SIZE, save_as = "disc_s_mnist",
+            y_transform = binarize_y
+        )
 
 
 def split_not_mnist():
@@ -149,53 +112,28 @@ def split_not_mnist():
     not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=Flatten(), limit_size=50000)
     not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=Flatten())
 
-    # create model
-    # fixme needs to be multi-headed
-    # todo does it make sense to do binary classification with out_size=2 ?
     model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
+    # todo: are the y classes integers?  Or characters?
+    label_to_task_mapping = {
+        0: 0,  1: 0,
+        2: 1,  3: 1,
+        4: 2,  5: 2,
+        6: 3,  7: 3,
+        8: 4,  9: 4,
+    }
+
+    train_task_ids = torch.Tensor([label_to_task_mapping(y) for _, y in mnist_train])
+    test_task_ids  = torch.Tensor([label_to_task_mapping(y) for _, y in mnist_test])
+
     # each task is a binary classification task for a different pair of characters
-    for task_idx, label_pair in enumerate(LABEL_PAIRS_SPLIT, 0):
-        print('TASK ' + str(task_idx) + ', chars (' + chr(label_pair[0] + 65) + ', ' + chr(label_pair[1] + 65) + ')')
-
-        task_idicies = [idx for idx, img in enumerate(not_mnist_train) if img[1] in label_pair ]
-        task_data = Sample(not_mnist_train, task_idicies)
-        non_coreset_data = coreset.select(task_data, task_id=task_idx)
-        train_loader = DataLoader(non_coreset_data, BATCH_SIZE)
-
-        for _ in tqdm(range(EPOCHS), 'Epochs: '):
-            for batch in train_loader:
-                optimizer.zero_grad()
-                x, y_true, task = batch
-
-                # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
-                y_true = y_true == label_pair[1]
-
-                loss = model.loss(x, y_true, task)
-                loss.backward()
-                optimizer.step()
-
-    # test
-    task_accuracies = []
-    model_cs_trained = coreset.coreset_train(model, optimizer)
-    for task_idx, label_pair in enumerate(tqdm(LABEL_PAIRS_SPLIT, 'Testing task: '), 0):
-        test_loader = DataLoader(not_mnist_test, batch_size=1, sampler=FilteringSampler(not_mnist_test, label_pair))
-        correct = 0
-        total = 0
-
-        for sample_idx, sample in enumerate(test_loader, 1):
-            # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
-            x, y_true = sample
-            y_true = y_true == label_pair[1]
-
-            y_pred = model_cs_trained.prediction(x, 0)
-
-            if y_pred == y_true:
-                correct += 1
-            total = sample_idx
-
-        task_accuracies.append(correct / total)
-
-        write_as_json('disc_s_n_mnist/accuracy.txt', task_accuracies)
-        save_model(model, 'disc_s_n_mnist/model.pth')
+    for task_idx in range(5):
+        binarize_y = lambda y: y == (2*task_idx + 1)
+        run_task(
+            model = model, train_data = not_mnist_train, train_task_ids = train_task_ids,
+            test_data = not_mnist_test, test_task_ids = test_task_ids,
+            optimizer = optimizer, coreset=coreset, task_idx = task_idx, epochs = EPOCHS,
+            batch_size = BATCH_SIZE, save_as = "disc_s_n_mnist",
+            y_transform = binarize_y
+        )
