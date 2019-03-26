@@ -12,7 +12,7 @@ def class_accuracy(pred: torch.Tensor, true: torch.Tensor) -> float:
     Returns:
         Classification accuracy of the predictions w.r.t. the ground truth labels
     """
-    return 100 * (pred == true).sum().item() / len(true)
+    return 100 * (pred.int() == true.int()).sum().item() / len(true)
 
 
 def concatenate_flattened(tensor_list) -> torch.Tensor:

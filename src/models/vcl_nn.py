@@ -58,7 +58,7 @@ class DiscriminativeVCL(nn.Module):
 
     def prediction(self, x, task):
         """ Returns an integer between 0 and self.out_size """
-        torch.argmax(self.forward(x, task))
+        return torch.argmax(self.forward(x, task), dim=1)
 
     def reset_for_new_task(self):
         """
