@@ -24,6 +24,8 @@ LABEL_PAIRS_SPLIT = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9)]
 
 CORESET_SIZE = 100
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print("Running on device", device)
 
 def permuted_mnist():
     """
@@ -35,7 +37,7 @@ def permuted_mnist():
 
     # create model, single-headed in permuted MNIST experiment
     model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2,
-                              n_tasks=1, initial_posterior_var=1e-6)
+                              n_tasks=1, initial_posterior_var=1e-6).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
@@ -58,16 +60,17 @@ def permuted_mnist():
     writer = SummaryWriter()
     run_point_estimate_initialisation(model=model, data=mnist_train,
                                       optimizer=optimizer, epochs=EPOCHS,
-                                      batch_size=BATCH_SIZE, task_ids=train_task_ids)
+                                      batch_size=BATCH_SIZE, device=device,
+                                      task_ids=train_task_ids)
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(NUM_TASKS_PERM):
         run_task(
-            model=model, train_data=mnist_train,
-            train_task_ids=train_task_ids, test_data=mnist_test,
-            test_task_ids=test_task_ids, task_idx=task, coreset=coreset,
-            optimizer=optimizer, epochs=EPOCHS, batch_size=BATCH_SIZE,
-            save_as="disc_p_mnist", multiheaded=False, summary_writer=writer
+            model=model, train_data=mnist_train, train_task_ids=train_task_ids,
+            test_data=mnist_test, test_task_ids=test_task_ids, task_idx=task,
+            coreset=coreset, optimizer=optimizer, epochs=EPOCHS,
+            batch_size=BATCH_SIZE, device=device, save_as="disc_p_mnist",
+            multiheaded=False, summary_writer=writer
         )
         model.reset_for_new_task()
 
@@ -85,7 +88,8 @@ def split_mnist():
     # create model
     # fixme needs to be multi-headed
     # todo does it make sense to do binary classification with out_size=2 ?
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2, n_tasks=5)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100,
+                              n_hidden_layers=2, n_tasks=5, initial_posterior_var=1e-6).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     coreset = RandomCoreset(size=CORESET_SIZE)
@@ -107,9 +111,8 @@ def split_mnist():
         run_task(
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, optimizer=optimizer,
-            coreset=coreset, task_idx=task_idx, epochs=EPOCHS,
-            batch_size=BATCH_SIZE, save_as="disc_s_mnist",
-            y_transform=binarize_y
+            coreset=coreset, task_idx=task_idx, epochs=EPOCHS, batch_size=BATCH_SIZE,
+            save_as="disc_s_mnist", device=device, y_transform=binarize_y
         )
 
 
@@ -122,7 +125,8 @@ def split_not_mnist():
     not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=Flatten(), limit_size=50000)
     not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=Flatten())
 
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100,
+                              n_hidden_layers=2, initial_posterior_var=1e-6).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
@@ -145,6 +149,6 @@ def split_not_mnist():
             model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
             test_data=not_mnist_test, test_task_ids=test_task_ids,
             optimizer=optimizer, coreset=coreset, task_idx=task_idx, epochs=EPOCHS,
-            batch_size=BATCH_SIZE, save_as="disc_s_n_mnist",
+            batch_size=BATCH_SIZE, save_as="disc_s_n_mnist", device=device,
             y_transform=binarize_y
         )

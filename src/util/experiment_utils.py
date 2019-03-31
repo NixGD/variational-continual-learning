@@ -5,8 +5,8 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
-                                      batch_size, task_idx=0, y_transform=None,
-                                      multiheaded=True):
+                                      batch_size, device, task_idx=0,
+                                      y_transform=None, multiheaded=True):
 
     print("Obtaining point estimate for posterior initialisation")
 
@@ -17,6 +17,8 @@ def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
         for batch in loader:
             optimizer.zero_grad()
             x, y_true = batch
+            x = x.to(device)
+            y_true = y_true.to(device)
 
             if y_transform is not None:
                 y_true = y_transform(y_true)
@@ -27,7 +29,7 @@ def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
              task_idx, optimizer, coreset, epochs, batch_size, save_as,
-             y_transform=None, multiheaded=True, summary_writer=None):
+             device, y_transform=None, multiheaded=True, summary_writer=None):
 
     print('TASK', task_idx)
 
@@ -42,6 +44,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         for batch in train_loader:
             optimizer.zero_grad()
             x, y_true = batch
+            x = x.to(device)
+            y_true = y_true.to(device)
 
             if y_transform is not None:
                 y_true = y_transform(y_true)
