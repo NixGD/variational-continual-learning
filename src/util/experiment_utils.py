@@ -53,7 +53,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             optimizer.step()
 
         if (summary_writer != None):
-            summary_writer.add_scalars("Loss", {f"TASK_{task_idx}": epoch_loss / len(task_data)}, epoch)
+            summary_writer.add_scalars("Loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
 
     # test
     model_cs_trained = coreset.coreset_train(model, optimizer)
@@ -77,7 +77,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         task_accuracies.append(acc)
 
     if summary_writer != None:
-        task_accuracies_dict = dict(zip([f"TASK_{i}" for i in range(task_idx + 1)], task_accuracies))
+        task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
         summary_writer.add_scalars("Test accuracy", task_accuracies_dict, task_idx + 1)
         summary_writer.add_scalar("Mean posterior variance", model._mean_posterior_variance(), task_idx + 1)
 
