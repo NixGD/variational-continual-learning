@@ -6,7 +6,7 @@ from torchvision.transforms import Compose
 from torch.utils.data import ConcatDataset
 from models.vcl_nn import DiscriminativeVCL
 from models.coreset import RandomCoreset
-from util.experiment_utils import run_task
+from util.experiment_utils import run_point_estimate_initialisation, run_task
 from util.transforms import Flatten, Permute
 from util.datasets import NOTMNIST
 from tensorboardX import SummaryWriter
@@ -35,7 +35,7 @@ def permuted_mnist():
 
     # create model, single-headed in permuted MNIST experiment
     model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2,
-                              n_tasks=1)
+                              n_tasks=1, initial_posterior_var=1e-6)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
@@ -56,6 +56,9 @@ def permuted_mnist():
     )
 
     writer = SummaryWriter()
+    run_point_estimate_initialisation(model=model, data=mnist_train,
+                                      optimizer=optimizer, epochs=EPOCHS,
+                                      batch_size=BATCH_SIZE, task_ids=train_task_ids)
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(NUM_TASKS_PERM):
@@ -66,6 +69,7 @@ def permuted_mnist():
             optimizer=optimizer, epochs=EPOCHS, batch_size=BATCH_SIZE,
             save_as="disc_p_mnist", multiheaded=False, summary_writer=writer
         )
+        model.reset_for_new_task()
 
     writer.close()
 

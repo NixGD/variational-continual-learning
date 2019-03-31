@@ -4,6 +4,26 @@ from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
+def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
+                                      batch_size, task_idx=0, y_transform=None,
+                                      multiheaded=True):
+
+    print("Obtaining point estimate for posterior initialisation")
+
+    task_data = task_subset(data, task_ids, task_idx)
+    loader = DataLoader(task_data, batch_size)
+
+    for _ in tqdm(range(epochs), 'Epochs: '):
+        for batch in loader:
+            optimizer.zero_grad()
+            x, y_true = batch
+
+            if y_transform is not None:
+                y_true = y_transform(y_true)
+
+            loss = model.point_estimate_loss(x, y_true, task=task_idx)
+            loss.backward()
+            optimizer.step()
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
              task_idx, optimizer, coreset, epochs, batch_size, save_as,
@@ -26,7 +46,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             if y_transform is not None:
                 y_true = y_transform(y_true)
 
-            loss = model.loss(x, y_true, head)
+            loss = model.vcl_loss(x, y_true, head)
             epoch_loss += len(x) * loss.item()
 
             loss.backward()
@@ -58,8 +78,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
     if summary_writer != None:
         task_accuracies_dict = dict(zip([f"TASK_{i}" for i in range(task_idx + 1)], task_accuracies))
-        summary_writer.add_scalar("Test accuracy", task_accuracies_dict, task_idx + 1)
-        summary_writer.add_scalar("Mean posterior variance", model.mean_posterior_variance, task_idx + 1)
+        summary_writer.add_scalars("Test accuracy", task_accuracies_dict, task_idx + 1)
+        summary_writer.add_scalar("Mean posterior variance", model._mean_posterior_variance(), task_idx + 1)
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')

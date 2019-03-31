@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from util.operations import concatenate_flattened
 from layers.distributional import DistributionalLinear
+import math
 
 
 EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
@@ -14,7 +15,8 @@ class DiscriminativeVCL(nn.Module):
     variational inference.
     """
 
-    def __init__(self, in_size: int, out_size: int, layer_width: int, n_hidden_layers: int, n_tasks: int):
+    def __init__(self, in_size: int, out_size: int, layer_width: int,
+                 n_hidden_layers: int, n_tasks: int, initial_posterior_var: int):
         super().__init__()
         self.input_size = in_size
         self.out_size = out_size
@@ -25,8 +27,7 @@ class DiscriminativeVCL(nn.Module):
         self.prior, self.posterior = None, None
         self.head_prior, self.head_posterior = None, None
 
-        self._init_variables()
-        self.task_id = 0
+        self._init_variables(initial_posterior_var)
 
     def forward(self, x, task):
         """ Forward pass of the model on an input. """
@@ -44,17 +45,33 @@ class DiscriminativeVCL(nn.Module):
         x = F.relu(x @ head_weight + head_bias)
 
         # Apply final softmax
-        sm = torch.nn.Softmax(dim=1)
-        x = sm(x)
+        x = torch.nn.Softmax(dim=1)(x)
 
         return x
 
-    def loss(self, x, y, task) -> torch.Tensor:
+    def vcl_loss(self, x, y, task) -> torch.Tensor:
         """
         Returns the loss of the model, as described in equation 4 of the Variational
         Continual Learning paper (https://arxiv.org/abs/1710.10628).
         """
         return self._calculate_kl_term() - self._log_prob(x, y, task)
+
+    def point_estimate_loss(self, x, y, task=0):
+        """
+        Returns a loss defined in terms of a simplified forward pass that
+        doesn't use sampling, and so uses the posterior means but not the
+        variances. Used as part of model initialisation to optimise the
+        posterior means to point-estimates for the first task.
+        """
+        (w_means, _), (b_means, _) = self.posterior
+        (head_w_means, _), (head_b_means, _) = self.head_posterior
+
+        for weight, bias in zip(w_means, b_means):
+            x = F.relu(x @ weight + bias)
+
+        x = x @ head_w_means[task] + head_b_means[task]
+
+        return nn.CrossEntropyLoss()(x, y)
 
     def prediction(self, x, task):
         """ Returns an integer between 0 and self.out_size """
@@ -64,23 +81,23 @@ class DiscriminativeVCL(nn.Module):
         """
         Called after completion of a task, to reset state for the next task
         """
-        self.task_id += 1
-
         # Set the value of the prior to be the current value of the posterior
         (prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars) = self.prior
         (post_w_means, post_w_log_vars), (post_b_means, post_b_log_vars) = self.posterior
-        prior_w_means.data.copy_(post_w_means.data)
-        prior_w_log_vars.data.copy_(post_w_log_vars.data)
-        prior_b_means.data.copy_(post_b_means.data)
-        prior_b_log_vars.data.copy_(post_b_log_vars.data)
+        for i in range(self.n_hidden_layers):
+            prior_w_means[i].data.copy_(post_w_means[i].data)
+            prior_w_log_vars[i].data.copy_(post_w_log_vars[i].data)
+            prior_b_means[i].data.copy_(post_b_means[i].data)
+            prior_b_log_vars[i].data.copy_(post_b_log_vars[i].data)
 
         # set the value of the head prior to be the current value of the posterior
         (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.head_prior
         (head_posterior_w_means, head_posterior_w_log_vars), (head_posterior_b_means, head_posterior_b_log_vars) = self.head_posterior
-        head_prior_w_means.data.copy_(head_posterior_w_means.data)
-        head_prior_w_log_vars.data.copy_(head_posterior_w_log_vars.data)
-        head_prior_b_means.data.copy_(head_posterior_b_means.data)
-        head_prior_b_log_vars.data.copy_(head_posterior_b_log_vars.data)
+        for i in range(self.n_tasks):
+            head_prior_w_means[i].data.copy_(head_posterior_w_means[i].data)
+            head_prior_w_log_vars[i].data.copy_(head_posterior_w_log_vars[i].data)
+            head_prior_b_means[i].data.copy_(head_posterior_b_means[i].data)
+            head_prior_b_log_vars[i].data.copy_(head_posterior_b_log_vars[i].data)
 
     def _calculate_kl_term(self):
         """
@@ -144,7 +161,7 @@ class DiscriminativeVCL(nn.Module):
             sampled_bias.append(b_means[layer_n] + b_epsilons * torch.exp(0.5 * b_log_vars[layer_n]))
         return zip(sampled_weights, sampled_bias)
 
-    def _init_variables(self):
+    def _init_variables(self, initial_posterior_var):
         """
         Initializes the model's prior and posterior weights / biases to their initial
         values. This method is called once on model creation. The model prior is registered
@@ -171,30 +188,39 @@ class DiscriminativeVCL(nn.Module):
 
         self.head_prior = ((head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars))
 
-        # The initial posterior is initialised to be the same as the first prior
-        grad_copy = lambda t: nn.Parameter(t.clone().detach().requires_grad_(True))
+        empty_parameter_like = lambda t: nn.Parameter(torch.empty_like(t, requires_grad=True))
 
-        posterior_w_means = [grad_copy(t) for t in prior_w_means]
-        posterior_w_log_vars = [grad_copy(t) for t in prior_w_log_vars]
-        posterior_b_means = [grad_copy(t) for t in prior_b_means]
-        posterior_b_log_vars = [grad_copy(t) for t in prior_b_log_vars]
+        posterior_w_means = [empty_parameter_like(t) for t in prior_w_means]
+        posterior_w_log_vars = [empty_parameter_like(t) for t in prior_w_log_vars]
+        posterior_b_means = [empty_parameter_like(t) for t in prior_b_means]
+        posterior_b_log_vars = [empty_parameter_like(t) for t in prior_b_log_vars]
 
         self.posterior = ((posterior_w_means, posterior_w_log_vars), (posterior_b_means, posterior_b_log_vars))
 
-        head_posterior_w_means = [grad_copy(t) for t in head_prior_w_means]
-        head_posterior_w_log_vars = [grad_copy(t) for t in head_prior_w_log_vars]
-        head_posterior_b_means = [grad_copy(t) for t in head_prior_b_means]
-        head_posterior_b_log_vars = [grad_copy(t) for t in head_prior_b_log_vars]
+        head_posterior_w_means = [empty_parameter_like(t) for t in head_prior_w_means]
+        head_posterior_w_log_vars = [empty_parameter_like(t) for t in head_prior_w_log_vars]
+        head_posterior_b_means = [empty_parameter_like(t) for t in head_prior_b_means]
+        head_posterior_b_log_vars = [empty_parameter_like(t) for t in head_prior_b_log_vars]
 
         self.head_posterior = \
             ((head_posterior_w_means, head_posterior_w_log_vars),
              (head_posterior_b_means, head_posterior_b_log_vars))
 
-        # finally, we register the prior and the posterior with the nn.Module. The
-        # prior values are registered as buffers, which indicates to PyTorch that they
-        # represent persistent state which should not be updated by the optimizer. The
-        # posteriors are registered as parameters, which on the other hand are to
-        # be modified by the optimizer.
+        # Initialise the posterior means with a normal distribution. Note that
+        # prior to training we will run a procedure to optimise these values to
+        # point-estimates of the parameters for the first task.
+        for t in posterior_w_means + posterior_b_means + head_posterior_w_means + head_posterior_b_means:
+            torch.nn.init.normal_(t, mean=0, std=1)
+
+        # Initialise the posterior variances with the given constant value.
+        for t in posterior_w_log_vars + posterior_b_log_vars + head_posterior_w_log_vars + head_posterior_b_log_vars:
+            torch.nn.init.constant_(t, math.log(initial_posterior_var))
+
+        # Finally, we register the prior and the posterior with the nn.Module.
+        # The prior values are registered as buffers, which indicates to PyTorch
+        # that they represent persistent state which should not be updated by
+        # the optimizer. The posteriors are registered as parameters, which on
+        # the other hand are to be modified by the optimizer.
         for i in range(self.n_hidden_layers):
             self.register_buffer("prior_w_means_" + str(i), prior_w_means[i])
             self.register_buffer("prior_w_log_vars_" + str(i), prior_w_log_vars[i])
@@ -224,7 +250,7 @@ class DiscriminativeVCL(nn.Module):
         Return the mean posterior variance for logging purposes.
         Excludes the head layer.
         """
-        ((_, posterior_w_log_vars), (_, posterior_b_log_vars)) = model.posterior
+        ((_, posterior_w_log_vars), (_, posterior_b_log_vars)) = self.posterior
         posterior_log_vars = torch.cat([torch.reshape(t, (-1,)) for t in posterior_w_log_vars] + posterior_b_log_vars)
         posterior_vars     = torch.exp(posterior_log_vars)
         return torch.mean(posterior_vars).item()
