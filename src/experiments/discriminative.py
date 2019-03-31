@@ -9,6 +9,7 @@ from models.coreset import RandomCoreset
 from util.experiment_utils import run_task
 from util.transforms import Flatten, Permute
 from util.datasets import NOTMNIST
+from tensorboardX import SummaryWriter
 
 # input and output dimensions of an FCFF MNIST classifier
 MNIST_FLATTENED_DIM = 28 * 28
@@ -54,6 +55,8 @@ def permuted_mnist():
         [torch.full((task_size,), id) for id in range(NUM_TASKS_PERM)]
     )
 
+    writer = SummaryWriter()
+
     # each task is classification of MNIST images with permuted pixels
     for task in range(NUM_TASKS_PERM):
         run_task(
@@ -61,9 +64,10 @@ def permuted_mnist():
             train_task_ids=train_task_ids, test_data=mnist_test,
             test_task_ids=test_task_ids, task_idx=task, coreset=coreset,
             optimizer=optimizer, epochs=EPOCHS, batch_size=BATCH_SIZE,
-            save_as="disc_p_mnist", multiheaded=False
+            save_as="disc_p_mnist", multiheaded=False, summary_writer=writer
         )
 
+    writer.close()
 
 def split_mnist():
     """

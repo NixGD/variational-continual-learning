@@ -4,8 +4,8 @@ import torch
 
 
 # default directory for outputting values
-OUT_DIR = '../out/experiments/'
-MODEL_DIR = '../out/models/'
+OUT_DIR = 'out/experiments/'
+MODEL_DIR = 'out/models/'
 
 
 def write_as_json(filename, data):

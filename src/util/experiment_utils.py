@@ -5,10 +5,9 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 
-def run_task(model, train_data, train_task_ids,
-                test_data, test_task_ids,
-                task_idx, optimizer, coreset, epochs, batch_size,
-                save_as, y_transform = None, multiheaded=True):
+def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
+             task_idx, optimizer, coreset, epochs, batch_size, save_as,
+             y_transform=None, multiheaded=True, summary_writer=None):
 
     print('TASK', task_idx)
 
@@ -18,7 +17,8 @@ def run_task(model, train_data, train_task_ids,
     non_coreset_data = coreset.select(task_data, task_id=head)
     train_loader = DataLoader(non_coreset_data, batch_size)
 
-    for _ in tqdm(range(epochs), 'Epochs: '):
+    for epoch in tqdm(range(epochs), 'Epochs: '):
+        epoch_loss = 0
         for batch in train_loader:
             optimizer.zero_grad()
             x, y_true = batch
@@ -27,8 +27,13 @@ def run_task(model, train_data, train_task_ids,
                 y_true = y_transform(y_true)
 
             loss = model.loss(x, y_true, head)
+            epoch_loss += len(x) * loss.item()
+
             loss.backward()
             optimizer.step()
+
+        if (summary_writer != None):
+            summary_writer.add_scalars("Loss", {f"TASK_{task_idx}": epoch_loss / len(task_data)}, epoch)
 
     # test
     model_cs_trained = coreset.coreset_train(model, optimizer)
@@ -50,6 +55,11 @@ def run_task(model, train_data, train_task_ids,
                 .format(task_idx, test_task_idx, acc))
 
         task_accuracies.append(acc)
+
+    if summary_writer != None:
+        task_accuracies_dict = dict(zip([f"TASK_{i}" for i in range(task_idx + 1)], task_accuracies))
+        summary_writer.add_scalar("Test accuracy", task_accuracies_dict, task_idx + 1)
+        summary_writer.add_scalar("Mean posterior variance", model.mean_posterior_variance, task_idx + 1)
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')

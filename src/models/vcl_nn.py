@@ -219,6 +219,15 @@ class DiscriminativeVCL(nn.Module):
             self.register_parameter("head_posterior_b_means_" + str(i), head_posterior_b_means[i])
             self.register_parameter("head_posterior_b_log_vars_" + str(i), head_posterior_b_log_vars[i])
 
+    def _mean_posterior_variance(self):
+        """
+        Return the mean posterior variance for logging purposes.
+        Excludes the head layer.
+        """
+        ((_, posterior_w_log_vars), (_, posterior_b_log_vars)) = model.posterior
+        posterior_log_vars = torch.cat([torch.reshape(t, (-1,)) for t in posterior_w_log_vars] + posterior_b_log_vars)
+        posterior_vars     = torch.exp(posterior_log_vars)
+        return torch.mean(posterior_vars).item()
 
 class GenerativeVCL(nn.Module):
     """
