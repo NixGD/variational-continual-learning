@@ -10,6 +10,8 @@ from util.experiment_utils import run_point_estimate_initialisation, run_task
 from util.transforms import Flatten, Permute
 from util.datasets import NOTMNIST
 from tensorboardX import SummaryWriter
+import os
+from datetime import datetime
 
 # input and output dimensions of an FCFF MNIST classifier
 MNIST_FLATTENED_DIM = 28 * 28
@@ -57,7 +59,8 @@ def permuted_mnist():
         [torch.full((task_size,), id) for id in range(NUM_TASKS_PERM)]
     )
 
-    writer = SummaryWriter()
+    summary_logdir = os.path.join("logs", "disc_p_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    writer = SummaryWriter(summary_logdir)
     run_point_estimate_initialisation(model=model, data=mnist_train,
                                       optimizer=optimizer, epochs=EPOCHS,
                                       batch_size=BATCH_SIZE, device=device,
@@ -105,6 +108,9 @@ def split_mnist():
     train_task_ids = torch.from_numpy(np.array([label_to_task_mapping[y.item()] for _, y in mnist_train]))
     test_task_ids = torch.from_numpy(np.array([label_to_task_mapping[y.item()] for _, y in mnist_test]))
 
+    summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    writer = SummaryWriter(summary_logdir)
+
     # each task is a binary classification task for a different pair of digits
     for task_idx in range(5):
         binarize_y = lambda y: y == (2 * task_idx + 1)
@@ -112,9 +118,12 @@ def split_mnist():
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, optimizer=optimizer,
             coreset=coreset, task_idx=task_idx, epochs=EPOCHS, batch_size=BATCH_SIZE,
-            save_as="disc_s_mnist", device=device, y_transform=binarize_y
+            save_as="disc_s_mnist", device=device, y_transform=binarize_y,
+            summary_writer=writer
         )
+        model.reset_for_new_task()
 
+    writer.close()
 
 def split_not_mnist():
     """
@@ -142,6 +151,9 @@ def split_not_mnist():
     train_task_ids = torch.from_numpy(np.array([label_to_task_mapping[y] for _, y in not_mnist_train]))
     test_task_ids = torch.from_numpy(np.array([label_to_task_mapping[y] for _, y in not_mnist_test]))
 
+    summary_logdir = os.path.join("logs", "disc_s_n_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    writer = SummaryWriter(summary_logdir)
+
     # each task is a binary classification task for a different pair of characters
     for task_idx in range(5):
         binarize_y = lambda y: y == (2 * task_idx + 1)
@@ -150,5 +162,8 @@ def split_not_mnist():
             test_data=not_mnist_test, test_task_ids=test_task_ids,
             optimizer=optimizer, coreset=coreset, task_idx=task_idx, epochs=EPOCHS,
             batch_size=BATCH_SIZE, save_as="disc_s_n_mnist", device=device,
-            y_transform=binarize_y
+            y_transform=binarize_y, summary_writer=writer
         )
+        model.reset_for_new_task()
+
+    writer.close()
