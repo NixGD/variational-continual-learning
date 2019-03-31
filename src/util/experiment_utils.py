@@ -46,7 +46,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             if y_transform is not None:
                 y_true = y_transform(y_true)
 
-            loss = model.vcl_loss(x, y_true, head)
+            loss = model.vcl_loss(x, y_true, head, len(task_data))
             epoch_loss += len(x) * loss.item()
 
             loss.backward()
