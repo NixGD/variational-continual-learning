@@ -21,7 +21,7 @@ def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
             y_true = y_true.to(device)
 
             if y_transform is not None:
-                y_true = y_transform(y_true)
+                y_true = y_transform(y_true, task_idx)
 
             loss = model.point_estimate_loss(x, y_true, task=task_idx)
             loss.backward()

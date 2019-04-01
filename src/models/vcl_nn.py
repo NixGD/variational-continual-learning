@@ -105,7 +105,7 @@ class DiscriminativeVCL(nn.Module):
         """ Returns an integer between 0 and self.out_size """
         return torch.argmax(self.forward(x, task), dim=1)
 
-    def reset_for_new_task(self):
+    def reset_for_new_task(self, head):
         """
         Called after completion of a task, to reset state for the next task
         """
@@ -121,11 +121,10 @@ class DiscriminativeVCL(nn.Module):
         # set the value of the head prior to be the current value of the posterior
         (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.head_prior
         (head_posterior_w_means, head_posterior_w_log_vars), (head_posterior_b_means, head_posterior_b_log_vars) = self.head_posterior
-        for i in range(self.n_tasks):
-            head_prior_w_means[i].data.copy_(head_posterior_w_means[i].data)
-            head_prior_w_log_vars[i].data.copy_(head_posterior_w_log_vars[i].data)
-            head_prior_b_means[i].data.copy_(head_posterior_b_means[i].data)
-            head_prior_b_log_vars[i].data.copy_(head_posterior_b_log_vars[i].data)
+        head_prior_w_means[head].data.copy_(head_posterior_w_means[head].data)
+        head_prior_w_log_vars[head].data.copy_(head_posterior_w_log_vars[head].data)
+        head_prior_b_means[head].data.copy_(head_posterior_b_means[head].data)
+        head_prior_b_log_vars[head].data.copy_(head_posterior_b_log_vars[head].data)
 
     def _calculate_kl_term(self):
         """

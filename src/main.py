@@ -17,6 +17,7 @@ def main(experiment='all'):
     # run all experiments
     if experiment == 'all':
         for exp in list(EXP_OPTIONS.keys()):
+            print("Running", exp)
             EXP_OPTIONS[exp]()
     # select specific experiment to run
     else:

@@ -13,19 +13,9 @@ from tensorboardX import SummaryWriter
 import os
 from datetime import datetime
 
-# input and output dimensions of an FCFF MNIST classifier
 MNIST_FLATTENED_DIM = 28 * 28
-MNIST_N_CLASSES = 10
-EPOCHS = 100
-BATCH_SIZE = 256
 LR = 0.001
-# settings specific to permuted MNIST experiment
-NUM_TASKS_PERM = 10
-# settings specific to split MNIST experiment
-NUM_TASKS_SPLIT = 5
-LABEL_PAIRS_SPLIT = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9)]
-
-CORESET_SIZE = 100
+INITIAL_POSTERIOR_VAR = 1e-6
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Running on device", device)
@@ -35,29 +25,40 @@ def permuted_mnist():
     Runs the 'Permuted MNIST' experiment from the VCL paper, in which each task
     is obtained by applying a fixed random permutation to the pixels of each image.
     """
+    N_CLASSES = 10
+    LAYER_WIDTH = 100
+    N_HIDDEN_LAYERS = 2
+    N_TASKS = 10
+    CORESET_SIZE = 200
+    EPOCHS = 100
+    BATCH_SIZE = 256
+
     # flattening and permutation used for each task
-    transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(NUM_TASKS_PERM)]
+    transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(N_TASKS)]
 
     # create model, single-headed in permuted MNIST experiment
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=MNIST_N_CLASSES, layer_width=100, n_hidden_layers=2,
-                              n_tasks=1, initial_posterior_var=1e-6).to(device)
+    model = DiscriminativeVCL(
+        in_size=MNIST_FLATTENED_DIM, out_size=N_CLASSES,
+        layer_width=LAYER_WIDTH, n_hidden_layers=N_HIDDEN_LAYERS,
+        n_tasks=N_TASKS, initial_posterior_var=INITIAL_POSTERIOR_VAR
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
     mnist_train = ConcatDataset(
         [MNIST(root='../data/', train=True, download=True, transform=t) for t in transforms]
     )
-    task_size = len(mnist_train) // NUM_TASKS_PERM
+    task_size = len(mnist_train) // N_TASKS
     train_task_ids = torch.cat(
-        [torch.full((task_size,), id) for id in range(NUM_TASKS_PERM)]
+        [torch.full((task_size,), id) for id in range(N_TASKS)]
     )
 
     mnist_test = ConcatDataset(
         [MNIST(root='../data/', train=False, download=True, transform=t) for t in transforms]
     )
-    task_size = len(mnist_test) // NUM_TASKS_PERM
+    task_size = len(mnist_test) // N_TASKS
     test_task_ids = torch.cat(
-        [torch.full((task_size,), id) for id in range(NUM_TASKS_PERM)]
+        [torch.full((task_size,), id) for id in range(N_TASKS)]
     )
 
     summary_logdir = os.path.join("logs", "disc_p_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
@@ -68,7 +69,7 @@ def permuted_mnist():
                                       task_ids=train_task_ids)
 
     # each task is classification of MNIST images with permuted pixels
-    for task in range(NUM_TASKS_PERM):
+    for task in range(N_TASKS):
         run_task(
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, task_idx=task,
@@ -76,24 +77,32 @@ def permuted_mnist():
             batch_size=BATCH_SIZE, device=device, save_as="disc_p_mnist",
             multiheaded=False, summary_writer=writer
         )
-        model.reset_for_new_task()
+        model.reset_for_new_task(task)
 
     writer.close()
 
 def split_mnist():
     """
-        Runs the 'Split MNIST' experiment from the VCL paper, in which each task
-        is a binary classification task carried out on a subset of the MNIST dataset.
+    Runs the 'Split MNIST' experiment from the VCL paper, in which each task is
+    a binary classification task carried out on a subset of the MNIST dataset.
     """
+    N_CLASSES = 2 # TODO does it make sense to do binary classification with out_size=2 ?
+    LAYER_WIDTH = 256
+    N_HIDDEN_LAYERS = 2
+    N_TASKS = 5
+    CORESET_SIZE = 40
+    EPOCHS = 120
+    BATCH_SIZE = 50000
+
     # download dataset
     mnist_train = MNIST(root='../data/', train=True, download=True, transform=Flatten())
     mnist_test = MNIST(root='../data/', train=False, download=True, transform=Flatten())
 
-    # create model
-    # fixme needs to be multi-headed
-    # todo does it make sense to do binary classification with out_size=2 ?
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2,
-                              n_tasks=NUM_TASKS_SPLIT, initial_posterior_var=1e-6).to(device)
+    model = DiscriminativeVCL(
+        in_size=MNIST_FLATTENED_DIM, out_size=N_CLASSES,
+        layer_width=LAYER_WIDTH, n_hidden_layers=N_HIDDEN_LAYERS,
+        n_tasks=N_TASKS, initial_posterior_var=INITIAL_POSTERIOR_VAR
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     coreset = RandomCoreset(size=CORESET_SIZE)
@@ -117,8 +126,14 @@ def split_mnist():
     writer = SummaryWriter(summary_logdir)
 
     # each task is a binary classification task for a different pair of digits
-    binarize_y = lambda y, task: y == (2 * task + 1)
-    for task_idx in range(NUM_TASKS_SPLIT):
+    binarize_y = lambda y, task: (y == (2 * task + 1)).long()
+
+    run_point_estimate_initialisation(model=model, data=mnist_train,
+                                      optimizer=optimizer, epochs=EPOCHS,
+                                      batch_size=BATCH_SIZE, device=device,
+                                      task_ids=train_task_ids, y_transform=binarize_y)
+
+    for task_idx in range(N_TASKS):
         run_task(
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, optimizer=optimizer,
@@ -126,7 +141,7 @@ def split_mnist():
             save_as="disc_s_mnist", device=device, y_transform=binarize_y,
             summary_writer=writer
         )
-        model.reset_for_new_task()
+        model.reset_for_new_task(task_idx)
 
     writer.close()
 
@@ -136,11 +151,22 @@ def split_not_mnist():
         is a binary classification task carried out on a subset of the not MNIST
         character recognition dataset.
     """
-    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=Flatten(), limit_size=50000)
+    N_CLASSES = 2 # TODO does it make sense to do binary classification with out_size=2 ?
+    LAYER_WIDTH = 150
+    N_HIDDEN_LAYERS = 4
+    N_TASKS = 5
+    CORESET_SIZE = 40
+    EPOCHS = 120
+    BATCH_SIZE = 400000
+
+    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=Flatten())
     not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=Flatten())
 
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100,
-                              n_hidden_layers=2, initial_posterior_var=1e-6).to(device)
+    model = DiscriminativeVCL(
+        in_size=MNIST_FLATTENED_DIM, out_size=N_CLASSES,
+        layer_width=LAYER_WIDTH, n_hidden_layers=N_HIDDEN_LAYERS,
+        n_tasks=N_TASKS, initial_posterior_var=INITIAL_POSTERIOR_VAR
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
@@ -159,9 +185,15 @@ def split_not_mnist():
     summary_logdir = os.path.join("logs", "disc_s_n_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
 
-    # each task is a binary classification task for a different pair of characters
-    for task_idx in range(5):
-        binarize_y = lambda y: y == (2 * task_idx + 1)
+    # each task is a binary classification task for a different pair of digits
+    binarize_y = lambda y, task: (y == (2 * task + 1)).long()
+
+    run_point_estimate_initialisation(model=model, data=not_mnist_train,
+                                      optimizer=optimizer, epochs=EPOCHS,
+                                      batch_size=BATCH_SIZE, device=device,
+                                      task_ids=train_task_ids, y_transform=binarize_y)
+
+    for task_idx in range(N_TASKS):
         run_task(
             model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
             test_data=not_mnist_test, test_task_ids=test_task_ids,
@@ -169,6 +201,6 @@ def split_not_mnist():
             batch_size=BATCH_SIZE, save_as="disc_s_n_mnist", device=device,
             y_transform=binarize_y, summary_writer=writer
         )
-        model.reset_for_new_task()
+        model.reset_for_new_task(task_idx)
 
     writer.close()
