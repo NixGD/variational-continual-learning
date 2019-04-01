@@ -22,6 +22,7 @@ LR = 0.001
 # settings specific to permuted MNIST experiment
 NUM_TASKS_PERM = 10
 # settings specific to split MNIST experiment
+NUM_TASKS_SPLIT = 5
 LABEL_PAIRS_SPLIT = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9)]
 
 CORESET_SIZE = 100
@@ -91,8 +92,8 @@ def split_mnist():
     # create model
     # fixme needs to be multi-headed
     # todo does it make sense to do binary classification with out_size=2 ?
-    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100,
-                              n_hidden_layers=2, n_tasks=5, initial_posterior_var=1e-6).to(device)
+    model = DiscriminativeVCL(in_size=MNIST_FLATTENED_DIM, out_size=2, layer_width=100, n_hidden_layers=2,
+                              n_tasks=NUM_TASKS_SPLIT, initial_posterior_var=1e-6).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     coreset = RandomCoreset(size=CORESET_SIZE)
@@ -105,15 +106,15 @@ def split_mnist():
         8: 4, 9: 4,
     }
 
-    train_task_ids = torch.from_numpy(np.array([label_to_task_mapping[y.item()] for _, y in mnist_train]))
-    test_task_ids = torch.from_numpy(np.array([label_to_task_mapping[y.item()] for _, y in mnist_test]))
+    train_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_train])
+    test_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_test])
 
     summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
 
     # each task is a binary classification task for a different pair of digits
-    for task_idx in range(5):
-        binarize_y = lambda y: y == (2 * task_idx + 1)
+    binarize_y = lambda y, task: y == (2 * task + 1)
+    for task_idx in range(NUM_TASKS_SPLIT):
         run_task(
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, optimizer=optimizer,

@@ -36,7 +36,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     head = task_idx if multiheaded else 0
 
     task_data = task_subset(train_data, train_task_ids, task_idx)
-    non_coreset_data = coreset.select(task_data, task_id=head)
+    non_coreset_data = coreset.select(task_data, task_id=task_idx)
     train_loader = DataLoader(non_coreset_data, batch_size)
 
     for epoch in tqdm(range(epochs), 'Epochs: '):
@@ -48,7 +48,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             y_true = y_true.to(device)
 
             if y_transform is not None:
-                y_true = y_transform(y_true)
+                y_true = y_transform(y_true, task_idx)
 
             loss = model.vcl_loss(x, y_true, head, len(task_data))
             epoch_loss += len(x) * loss.item()
@@ -60,9 +60,12 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             summary_writer.add_scalars("loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
 
     # test
-    model_cs_trained = coreset.coreset_train(model, optimizer)
+    print('Training Coreset')
+    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs, y_transform=y_transform, 
+                                             multiheaded=multiheaded)
     task_accuracies = []
     for test_task_idx in range(task_idx+1):
+        head = test_task_idx if multiheaded else 0
 
         task_data = task_subset(test_data, test_task_ids, test_task_idx)
 
@@ -72,13 +75,14 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         y_true = y_true.to(device)
 
         if y_transform is not None:
-            y_true = y_transform(y_true)
+            y_true = y_transform(y_true, test_task_idx)
 
         y_pred = model_cs_trained.prediction(x, head)
 
         acc = class_accuracy(y_pred, y_true)
         print("After task {} perfomance on task {} is {}"
                 .format(task_idx, test_task_idx, acc))
+        print()
 
         task_accuracies.append(acc)
 

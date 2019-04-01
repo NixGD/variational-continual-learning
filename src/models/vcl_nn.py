@@ -70,7 +70,7 @@ class DiscriminativeVCL(nn.Module):
             x = F.relu(x @ weight + bias)
 
         head_weight, head_bias = list(sampled_head_layers)[task]
-        x = F.relu(x @ head_weight + head_bias)
+        x = x @ head_weight + head_bias
 
         # Apply final softmax
         x = torch.nn.Softmax(dim=1)(x)
