@@ -3,6 +3,7 @@ import torch.utils.data as data
 from copy import deepcopy
 import numpy as np
 from util.operations import task_subset
+import torch.optim as optim
 from tqdm import tqdm
 
 class Coreset():
@@ -11,10 +12,11 @@ class Coreset():
     coreset but subclasses will replace the select method.
     """
 
-    def __init__(self, size=0):
+    def __init__(self, size=0, lr=0.001):
         self.size = size
         self.coreset = None
         self.coreset_task_ids = None
+        self.lr = lr
 
     def select(self, d: data.Dataset, task_id: int):
         """
@@ -25,7 +27,7 @@ class Coreset():
 
         return d
 
-    def coreset_train(self, m, optimizer, up_to_task, epochs, y_transform=None, 
+    def coreset_train(self, m, old_optimizer, up_to_task, epochs, y_transform=None,
                       multiheaded=True, batch_size=256):
         """
         Returns a new model, trained on the coreset.  The returned model will
@@ -37,11 +39,13 @@ class Coreset():
 
         model = deepcopy(m)
 
+        optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        optimizer.load_state_dict(old_optimizer.state_dict())
+
         for task_idx in range(up_to_task+1):
             print('CORESET TASK', task_idx)
 
             head = task_idx if multiheaded else 0
-
             task_data = task_subset(self.coreset, self.coreset_task_ids, task_idx)
             train_loader = data.DataLoader(task_data, batch_size)
             for _ in tqdm(range(epochs), 'Epochs: '):
