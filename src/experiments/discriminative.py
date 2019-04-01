@@ -106,8 +106,12 @@ def split_mnist():
         8: 4, 9: 4,
     }
 
-    train_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_train])
-    test_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_test])
+    if isinstance(mnist_train[0][1], int):
+        train_task_ids = torch.Tensor([label_to_task_mapping[y] for _, y in mnist_train])
+        test_task_ids = torch.Tensor([label_to_task_mapping[y] for _, y in mnist_test])
+    elif isinstance(mnist_train[0][1], torch.tensor):
+        train_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_train])
+        test_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_test])
 
     summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
