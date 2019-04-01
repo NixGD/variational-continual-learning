@@ -68,6 +68,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
         x      = torch.Tensor([x for x, _ in task_data])
         y_true = torch.Tensor([y for _, y in task_data])
+        x = x.to(device)
+        y_true = y_true.to(device)
 
         if y_transform is not None:
             y_true = y_transform(y_true)

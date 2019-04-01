@@ -29,6 +29,34 @@ class DiscriminativeVCL(nn.Module):
 
         self._init_variables(initial_posterior_var)
 
+    def to(self, *args, **kwargs):
+        """
+        Our prior tensors are registered as buffers but the way we access them
+        indirectly (through tuple attributes on the model) is causing problems
+        because when we use `.to()` to move the model to a new device, the prior
+        tensors get moved (because they're registered as buffers) but the
+        references in the tuples don't get updated to point to the new moved
+        tensors. This has no effect when running just on a cpu but breaks the
+        model when trying to run on a gpu. There are a million nicer ways of
+        working around this problem, but for now the easiest thing is to do
+        this: override the `.to()` method and manually update our references to
+        prior tensors.
+        """
+        self = super().to(*args, **kwargs)
+        (prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars) = self.prior
+        prior_w_means = [t.to(*args, **kwargs) for t in prior_w_means]
+        prior_w_log_vars = [t.to(*args, **kwargs) for t in prior_w_log_vars]
+        prior_b_means = [t.to(*args, **kwargs) for t in prior_b_means]
+        prior_b_log_vars = [t.to(*args, **kwargs) for t in prior_b_log_vars]
+        self.prior = (prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars)
+        (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars) = self.head_prior
+        head_prior_w_means = [t.to(*args, **kwargs) for t in head_prior_w_means]
+        head_prior_w_log_vars = [t.to(*args, **kwargs) for t in head_prior_w_log_vars]
+        head_prior_b_means = [t.to(*args, **kwargs) for t in head_prior_b_means]
+        head_prior_b_log_vars = [t.to(*args, **kwargs) for t in head_prior_b_log_vars]
+        self.head_prior = (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars)
+        return self
+
     def forward(self, x, task):
         """ Forward pass of the model on an input. """
         # sample layer parameters from posterior distribution
