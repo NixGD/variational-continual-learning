@@ -92,8 +92,8 @@ def split_mnist():
         8: 4, 9: 4,
     }
 
-    train_task_ids = torch.Tensor([label_to_task_mapping[y] for _, y in mnist_train])
-    test_task_ids = torch.Tensor([label_to_task_mapping[y] for _, y in mnist_test])
+    train_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_train])
+    test_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_test])
 
     # each task is a binary classification task for a different pair of digits
     binarize_y = lambda y, task: y == (2 * task + 1)
