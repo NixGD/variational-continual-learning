@@ -60,8 +60,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             summary_writer.add_scalars("loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
 
     # test
-    print('Training Coreset')
-    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs, y_transform=y_transform, 
+    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
+                                             device, y_transform=y_transform,
                                              multiheaded=multiheaded)
     task_accuracies = []
     for test_task_idx in range(task_idx+1):
@@ -82,7 +82,6 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         acc = class_accuracy(y_pred, y_true)
         print("After task {} perfomance on task {} is {}"
                 .format(task_idx, test_task_idx, acc))
-        print()
 
         task_accuracies.append(acc)
 

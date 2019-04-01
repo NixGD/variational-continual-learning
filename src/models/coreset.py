@@ -27,8 +27,8 @@ class Coreset():
 
         return d
 
-    def coreset_train(self, m, old_optimizer, up_to_task, epochs, y_transform=None,
-                      multiheaded=True, batch_size=256):
+    def coreset_train(self, m, old_optimizer, up_to_task, epochs, device,
+                      y_transform=None, multiheaded=True, batch_size=256):
         """
         Returns a new model, trained on the coreset.  The returned model will
         be a deep copy, except when coreset is empty (when it will be identical)
@@ -52,11 +52,13 @@ class Coreset():
                 for batch in train_loader:
                     optimizer.zero_grad()
                     x, y_true = batch
+                    x = x.to(device)
+                    y_true = y_true.to(device)
 
                     if y_transform is not None:
                         y_true = y_transform(y_true, task_idx)
 
-                    loss = model.loss(x, y_true, head)
+                    loss = model.vcl_loss(x, y_true, head, len(task_data))
                     loss.backward()
                     optimizer.step()
 

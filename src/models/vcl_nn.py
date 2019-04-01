@@ -77,12 +77,12 @@ class DiscriminativeVCL(nn.Module):
 
         return x
 
-    def vcl_loss(self, x, y, task, task_size) -> torch.Tensor:
+    def vcl_loss(self, x, y, head, task_size) -> torch.Tensor:
         """
         Returns the loss of the model, as described in equation 4 of the Variational
         Continual Learning paper (https://arxiv.org/abs/1710.10628).
         """
-        return self._calculate_kl_term() / task_size - self._log_prob(x, y, task)
+        return self._calculate_kl_term().cpu() / task_size - self._log_prob(x, y, head)
 
     def point_estimate_loss(self, x, y, task=0):
         """
@@ -167,8 +167,8 @@ class DiscriminativeVCL(nn.Module):
         # Sum KL over all parameters
         return 0.5 * kl_elementwise.sum()
 
-    def _log_prob(self, x, y, task):
-        predictions = self.forward(x, task)
+    def _log_prob(self, x, y, head):
+        predictions = self.forward(x, head)
 
         # Make mask to select probabilities associated with actual y values
         mask = torch.zeros(predictions.size(), dtype=torch.uint8)
@@ -176,7 +176,7 @@ class DiscriminativeVCL(nn.Module):
             mask[i][int(y[i].item())] = 1
 
         # Select probabilities, log and sum them
-        y_preds = torch.masked_select(predictions, mask)
+        y_preds = torch.masked_select(predictions.cpu(), mask)
         return torch.mean(torch.log(y_preds + EPSILON))
 
     def _sample_parameters(self, w_means, b_means, w_log_vars, b_log_vars):
