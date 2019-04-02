@@ -3,25 +3,23 @@ from util.operations import task_subset, class_accuracy
 from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
-from util.plot_autograd import make_dot
 
 
-def run_point_estimate_initialisation(model, train_data, train_task_ids, test_data,
-                                      test_task_ids, optimizer, epochs,
+def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
                                       batch_size, device, task_idx=0,
                                       y_transform=None, multiheaded=True):
+
     print("Obtaining point estimate for posterior initialisation")
 
-    task_data = task_subset(train_data, train_task_ids, task_idx)
+    task_data = task_subset(data, task_ids, task_idx)
     loader = DataLoader(task_data, batch_size)
 
     for _ in tqdm(range(epochs), 'Epochs: '):
         for batch in loader:
             optimizer.zero_grad()
             x, y_true = batch
-            # todo reinstate
-            # x = x.to(device)
-            # y_true = y_true.to(device)
+            x = x.to(device)
+            y_true = y_true.to(device)
 
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
@@ -30,31 +28,11 @@ def run_point_estimate_initialisation(model, train_data, train_task_ids, test_da
             loss.backward()
             optimizer.step()
 
-    # test
-    task_accuracies = []
-    for test_task_idx in range(task_idx + 1):
-        head = test_task_idx if multiheaded else 0
-
-        task_data = task_subset(test_data, test_task_ids, test_task_idx)
-
-        x = torch.Tensor([x for x, _ in task_data])
-        y_true = torch.Tensor([y for _, y in task_data])
-        x = x.to(device)
-        y_true = y_true.to(device)
-
-        if y_transform is not None:
-            y_true = y_transform(y_true, test_task_idx)
-
-        y_pred = model.prediction(x, head)
-
-        acc = class_accuracy(y_pred, y_true)
-        print("After pre-training, performance on task {} is {}"
-              .format(test_task_idx, acc))
-
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
              task_idx, optimizer, coreset, epochs, batch_size, save_as,
              device, y_transform=None, multiheaded=True, summary_writer=None):
+
     print('TASK', task_idx)
 
     head = task_idx if multiheaded else 0
@@ -68,33 +46,32 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         for batch in train_loader:
             optimizer.zero_grad()
             x, y_true = batch
-            # todo reinstate
-            # x = x.to(device)
-            # y_true = y_true.to(device)
+            x = x.to(device)
+            y_true = y_true.to(device)
 
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
 
-            loss = model.vcl_loss(x, y_true, len(task_data), head)
+            loss = model.vcl_loss(x, y_true, head, len(task_data))
             epoch_loss += len(x) * loss.item()
 
             loss.backward()
             optimizer.step()
 
         if summary_writer is not None:
-            summary_writer.add_scalars("Loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
+            summary_writer.add_scalars("loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
 
     # test
     model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
                                              device, y_transform=y_transform,
                                              multiheaded=multiheaded)
     task_accuracies = []
-    for test_task_idx in range(task_idx + 1):
+    for test_task_idx in range(task_idx+1):
         head = test_task_idx if multiheaded else 0
 
         task_data = task_subset(test_data, test_task_ids, test_task_idx)
 
-        x = torch.Tensor([x for x, _ in task_data])
+        x      = torch.Tensor([x for x, _ in task_data])
         y_true = torch.Tensor([y for _, y in task_data])
         x = x.to(device)
         y_true = y_true.to(device)
@@ -106,7 +83,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
         acc = class_accuracy(y_pred, y_true)
         print("After task {} perfomance on task {} is {}"
-              .format(task_idx, test_task_idx, acc))
+                .format(task_idx, test_task_idx, acc))
 
         task_accuracies.append(acc)
 
@@ -114,16 +91,10 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
         layer_statistics, model_statistics = model.get_statistics()
         summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
-
-        for idx, layer in enumerate(layer_statistics, 0):
-            summary_writer.add_scalar("layer_" + str(1) + "_average_posterior_w_variance",
-                                      layer['average_w_var'], task_idx + 1)
-            summary_writer.add_scalar("layer_" + str(1) + "_average_posterior_w_mean",
-                                      layer['average_w_mean'], task_idx + 1)
-            summary_writer.add_scalar("layer_" + str(1) + "_average_posterior_b_variance",
-                                      layer['average_b_var'], task_idx + 1)
-            summary_writer.add_scalar("layer_" + str(1) + "_average_posterior_b_mean",
-                                      layer['average_b_mean'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_w_variance", model_statistics['average_w_var'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_w_mean", model_statistics['average_w_mean'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_b_variance", model_statistics['average_b_var'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_b_mean", model_statistics['average_b_mean'], task_idx + 1)
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')

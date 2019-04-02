@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import math
 import torch
 import torch.nn.init
 import torch.nn.functional as F
@@ -46,6 +45,8 @@ class MeanFieldGaussianLinear(VariationalLayer):
           are the same shape as the input and :math:`H_{out} = \text{out\_features}`.
     """
 
+    __constants__ = ['bias']
+
     def __init__(self, in_features, out_features, initial_posterior_variance=1e-6, epsilon=1e-8):
         super().__init__()
         self.in_features = in_features
@@ -59,11 +60,6 @@ class MeanFieldGaussianLinear(VariationalLayer):
         self.register_buffer('prior_b_means', torch.zeros(out_features))
         self.register_buffer('prior_b_log_vars', torch.zeros(out_features))
 
-        self.posterior_W_means = Parameter(torch.empty_like(self._buffers['prior_W_means'], requires_grad=True))
-        self.posterior_b_means = Parameter(torch.empty_like(self._buffers['prior_b_means'], requires_grad=True))
-        self.posterior_W_log_vars = Parameter(torch.empty_like(self._buffers['prior_W_log_vars'], requires_grad=True))
-        self.posterior_b_log_vars = Parameter(torch.empty_like(self._buffers['prior_b_log_vars'], requires_grad=True))
-
         self._initialize_posteriors()
 
     @weak_script_method
@@ -71,12 +67,15 @@ class MeanFieldGaussianLinear(VariationalLayer):
         """ Produces module output on an input. """
         if sample_parameters:
             w, b = self._sample_parameters()
-            return F.linear(x, w, b)
         else:
-            return F.linear(x, self.posterior_W_means, self.posterior_b_means)
+            w = self.posterior_W_means
+            b = self.posterior_b_means
+
+        return F.linear(x, w, b)
 
     def reset_for_next_task(self):
         """ Overwrites the current prior with the current posterior. """
+        print('resetting')
         self._buffers['prior_W_means'] = self.posterior_W_means.clone().detach()
         self._buffers['prior_W_log_vars'] = self.posterior_W_log_vars.clone().detach()
         self._buffers['prior_b_means'] = self.posterior_b_means.clone().detach()
@@ -135,7 +134,9 @@ class MeanFieldGaussianLinear(VariationalLayer):
     def _initialize_posteriors(self):
         # posteriors on the other hand are optimizable parameters - means are normally distributed, log_vars
         # have some small initial value
-        torch.nn.init.kaiming_uniform_(self.posterior_W_means, a=math.sqrt(5))
-        torch.nn.init.uniform_(self.posterior_b_means, -0.1, 0.1)
-        torch.nn.init.constant_(self.posterior_W_log_vars, math.log(self.ipv))
-        torch.nn.init.constant_(self.posterior_b_log_vars, math.log(self.ipv))
+        self.posterior_W_means = Parameter(torch.randn_like(self._buffers['prior_W_means'], requires_grad=True))
+        self.posterior_b_means = Parameter(torch.randn_like(self._buffers['prior_b_means'], requires_grad=True))
+        self.posterior_W_log_vars = Parameter(
+            torch.full_like(self._buffers['prior_W_log_vars'], self.ipv, requires_grad=True))
+        self.posterior_b_log_vars = Parameter(
+            torch.full_like(self._buffers['prior_b_log_vars'], self.ipv, requires_grad=True))
