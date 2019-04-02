@@ -72,14 +72,13 @@ class NOTMNIST(torch.utils.data.Dataset):
 
         # finally, setup actual dataset
         self.transforms = transform
-        # self.data = image_label_pairs
         self.data = image_label_pairs
 
     def __getitem__(self, index):
-        sample = self.data[index]
+        (image, label) = self.data[index]
         if self.transforms is not None:
-            sample = self.transforms(sample)
-        return sample
+            image = self.transforms(image)
+        return (image, label)
 
     def __len__(self):
         return len(self.data)
