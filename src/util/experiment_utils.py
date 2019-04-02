@@ -4,6 +4,7 @@ from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
+
 def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
                                       batch_size, device, task_idx=0,
                                       y_transform=None, multiheaded=True):
@@ -26,6 +27,7 @@ def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
             loss = model.point_estimate_loss(x, y_true, task=task_idx)
             loss.backward()
             optimizer.step()
+
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
              task_idx, optimizer, coreset, epochs, batch_size, save_as,
@@ -56,7 +58,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             loss.backward()
             optimizer.step()
 
-        if (summary_writer != None):
+        if summary_writer is not None:
             summary_writer.add_scalars("loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
 
     # test
@@ -85,7 +87,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
         task_accuracies.append(acc)
 
-    if summary_writer != None:
+    if summary_writer is not None:
         task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
         summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
         summary_writer.add_scalar("mean_posterior_variance", model._mean_posterior_variance(), task_idx + 1)
