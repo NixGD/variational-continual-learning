@@ -28,7 +28,7 @@ class Encoder(torch.nn.Module):
 
     def forward(self, x, head_idx):
         out = x
-        for layer in self.shared_layers[:-1]:
+        for layer in self.shared_layers[:1]:
             out = F.relu(layer(out))
 
         out = self.shared_layers[-1](out)
