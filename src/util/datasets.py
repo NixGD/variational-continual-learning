@@ -18,10 +18,11 @@ class NOTMNIST(torch.utils.data.Dataset):
         Constructs an instance of the NOTMNIST dataset, conforming to the
         interface specified by torch.utils.data.Dataset.
 
-        Args: train: true if want train set, false if test set overwrite: true
-            if want to re-download and re-unpack existing data files transform:
-            transform to apply to images limit_size: maximum number of samples
-            to load into dataset
+        Args:
+            train: true if want train set, false if test set
+            overwrite: true if want to re-download and re-unpack existing data files
+            transform: transform to apply to images
+            limit_size: maximum number of samples to load into dataset
         """
         super().__init__()
 
@@ -49,7 +50,7 @@ class NOTMNIST(torch.utils.data.Dataset):
 
         # load dataset from files in folders
         data_root_folder = os.path.join(dir_name, ("notMNIST_large" if train else "notMNIST_small"))
-        image_path_label_pairs = []
+        image_label_pairs = []
         max_images_per_class = limit_size / 10
 
         for class_directory in os.listdir(data_root_folder):
@@ -60,26 +61,25 @@ class NOTMNIST(torch.utils.data.Dataset):
                 if n > max_images_per_class:
                     break
 
-                path_to_image_file = os.path.join(path_to_class_dir, os.fsdecode(image_file))
-                image_path_label_pairs.append((path_to_image_file, ord(class_label) - _ASCII_A))
+                try:
+                    path_to_image_file = os.path.join(path_to_class_dir, os.fsdecode(image_file))
+                    img = Image.open(os.fsdecode(path_to_image_file))
+                    img.load()
+                    image_label_pairs.append((img, ord(class_label) - _ASCII_A))
+                # some (very few) files in the dataset are malformed - ignore and move on
+                except OSError:
+                    pass
 
         # finally, setup actual dataset
         self.transforms = transform
         # self.data = image_label_pairs
-        self.data = image_path_label_pairs
+        self.data = image_label_pairs
 
     def __getitem__(self, index):
-        (sample_path, label) = self.data[index]
-        try:
-            sample = Image.open(os.fsdecode(sample_path))
-        except OSError:
-            # Hacky workaround for if an image can't be opened because it's malformed
-            print("Malformed file")
-            (sample_path, label) = self.data[0]
-            sample = Image.open(os.fsdecode(sample_path))
+        sample = self.data[index]
         if self.transforms is not None:
             sample = self.transforms(sample)
-        return (sample, label)
+        return sample
 
     def __len__(self):
         return len(self.data)
