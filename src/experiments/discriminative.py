@@ -15,7 +15,7 @@ from datetime import datetime
 
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
-INITIAL_POSTERIOR_VAR = 1e-6
+INITIAL_POSTERIOR_VAR = 1e-2
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Running on device", device)
