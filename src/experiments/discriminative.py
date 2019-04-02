@@ -118,7 +118,7 @@ def split_mnist():
     if isinstance(mnist_train[0][1], int):
         train_task_ids = torch.Tensor([label_to_task_mapping[y] for _, y in mnist_train])
         test_task_ids = torch.Tensor([label_to_task_mapping[y] for _, y in mnist_test])
-    elif isinstance(mnist_train[0][1], torch.tensor):
+    elif isinstance(mnist_train[0][1], torch.Tensor):
         train_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_train])
         test_task_ids = torch.Tensor([label_to_task_mapping[y.item()] for _, y in mnist_test])
 
