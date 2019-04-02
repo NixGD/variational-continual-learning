@@ -82,7 +82,7 @@ class DiscriminativeVCL(nn.Module):
         Returns the loss of the model, as described in equation 4 of the Variational
         Continual Learning paper (https://arxiv.org/abs/1710.10628).
         """
-        return self._calculate_kl_term().cpu() / task_size - self._log_prob(x, y, head)
+        return self._calculate_kl_term(head).cpu() / task_size - self._log_prob(x, y, head)
 
     def point_estimate_loss(self, x, y, task=0):
         """
@@ -126,7 +126,7 @@ class DiscriminativeVCL(nn.Module):
         head_prior_b_means[head].data.copy_(head_posterior_b_means[head].data)
         head_prior_b_log_vars[head].data.copy_(head_posterior_b_log_vars[head].data)
 
-    def _calculate_kl_term(self):
+    def _calculate_kl_term(self, head):
         """
         Calculates and returns the KL divergence of the new posterior and the previous
         iteration's posterior. See equation L3, slide 14.
@@ -137,11 +137,11 @@ class DiscriminativeVCL(nn.Module):
          (head_prior_b_means, head_prior_b_log_vars)) = self.head_prior
 
         prior_means = concatenate_flattened(
-            prior_w_means + head_prior_w_means +
-            prior_b_means + head_prior_b_means)
+            prior_w_means + head_prior_w_means[head:head+1] +
+            prior_b_means + head_prior_b_means[head:head+1])
         prior_log_vars = concatenate_flattened(
-            prior_w_log_vars + head_prior_w_log_vars +
-            prior_b_log_vars + head_prior_b_log_vars)
+            prior_w_log_vars + head_prior_w_log_vars[head:head+1] +
+            prior_b_log_vars + head_prior_b_log_vars[head:head+1])
         prior_vars = torch.exp(prior_log_vars)
 
         # Posterior
@@ -150,11 +150,11 @@ class DiscriminativeVCL(nn.Module):
          (head_post_b_means, head_post_b_log_vars)) = self.head_posterior
 
         post_means = concatenate_flattened(
-            post_w_means + head_post_w_means +
-            post_b_means + head_post_b_means)
+            post_w_means + head_post_w_means[head:head+1] +
+            post_b_means + head_post_b_means[head:head+1])
         post_log_vars = concatenate_flattened(
-            post_w_log_vars + head_post_w_log_vars +
-            post_b_log_vars + head_post_b_log_vars)
+            post_w_log_vars + head_post_w_log_vars[head:head+1] +
+            post_b_log_vars + head_post_b_log_vars[head:head+1])
         post_vars = torch.exp(post_log_vars)
 
         # Calculate KL for individual normal distributions over parameters
