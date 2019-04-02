@@ -28,7 +28,7 @@ def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
 
-            loss = model.point_estimate_loss(x, y_true, head=head)
+            loss = model.point_estimate_loss(x, y_true, head_idx=task_idx)
             loss.backward()
             optimizer.step()
 
@@ -97,8 +97,12 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
     if summary_writer is not None:
         task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
+        layer_statistics, model_statistics = model.get_statistics()
         summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
-        summary_writer.add_scalar("mean_posterior_variance", model._mean_posterior_variance(), task_idx + 1)
+        summary_writer.add_scalar("average_posterior_w_variance", model_statistics['average_w_var'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_w_mean", model_statistics['average_w_mean'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_b_variance", model_statistics['average_b_var'], task_idx + 1)
+        summary_writer.add_scalar("average_posterior_b_mean", model_statistics['average_b_mean'], task_idx + 1)
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')

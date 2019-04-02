@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset, Subset
 
+
 def class_accuracy(pred: torch.Tensor, true: torch.Tensor) -> float:
     """
     Computes the percentage class accuracy of the predictions, given the correct
@@ -15,11 +16,11 @@ def class_accuracy(pred: torch.Tensor, true: torch.Tensor) -> float:
     return 100 * (pred.int() == true.int()).sum().item() / len(true)
 
 
-def concatenate_flattened(tensor_list) -> torch.Tensor:
+def concatenate_flattened(*tensors) -> torch.Tensor:
     """
     Given list of tensors, flattens each and concatenates their values.
     """
-    return torch.cat([torch.reshape(t, (-1,)) for t in tensor_list])
+    return torch.cat([torch.reshape(t, (-1,)) for t in tensors])
 
 
 def task_subset(data: Dataset, task_ids: torch.Tensor, task: int,) -> torch.Tensor:
