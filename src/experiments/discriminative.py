@@ -31,7 +31,7 @@ def permuted_mnist():
     n_hidden_layers = 2
     n_tasks = 10
     coreset_size = 200
-    epochs = 20
+    epochs = 100
     batch_size = 256
 
     # flattening and permutation used for each task
@@ -104,13 +104,14 @@ def split_mnist():
     mnist_train = MNIST(root='../data/', train=True, download=True, transform=transform)
     mnist_test = MNIST(root='../data/', train=False, download=True, transform=transform)
 
-    model = DiscriminativeVCL(
-        x_dim=MNIST_FLATTENED_DIM, h_dim=n_classes,
-        layer_width=layer_width, n_hidden_layers=n_hidden_layers,
-        n_tasks=n_tasks, initial_posterior_var=INITIAL_POSTERIOR_VAR
-    ).to(device)
+    model = DiscriminativeVCL(x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes, n_heads=n_tasks,
+                              shared_h_dims=(layer_width, layer_width), head_h_dims=())
+    # model = DiscriminativeVCL(
+    #     x_dim=MNIST_FLATTENED_DIM, h_dim=n_classes,
+    #     layer_width=layer_width, n_hidden_layers=n_hidden_layers,
+    #     n_tasks=n_tasks, initial_posterior_var=INITIAL_POSTERIOR_VAR
+    # ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
-
     coreset = RandomCoreset(size=coreset_size)
 
     label_to_task_mapping = {
