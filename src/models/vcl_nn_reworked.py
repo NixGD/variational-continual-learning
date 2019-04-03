@@ -49,8 +49,7 @@ class DiscriminativeVCL(VCL):
     continual learning of discriminative tasks.
     """
 
-    def __init__(self, x_dim, h_dim, y_dim, n_heads=1, shared_h_dims=(100, 100), head_h_dims=(),
-                 initial_posterior_variance=1e-6):
+    def __init__(self, x_dim, h_dim, y_dim, n_heads=1, shared_h_dims=(100, 100), initial_posterior_variance=1e-6):
         super().__init__()
         # check for bad parameters
         if n_heads < 1:
@@ -63,7 +62,6 @@ class DiscriminativeVCL(VCL):
         self.ipv = initial_posterior_variance
 
         shared_dims = [x_dim] + list(shared_h_dims) + [h_dim]
-        head_dims = [h_dim] + list(head_h_dims) + [y_dim]
 
         # list of layers in shared network
         self.shared_layers = nn.ModuleList([
@@ -71,9 +69,7 @@ class DiscriminativeVCL(VCL):
         ])
         # list of heads, each head is a list of layers
         self.heads = nn.ModuleList([
-            nn.ModuleList([MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv)
-                            for i in range(len(head_dims) - 1)])
-            for _ in range(n_heads)
+            MeanFieldGaussianLinear(self.h_dim, self.y_dim, self.ipv) for _ in range(n_heads)
         ])
 
         self.softmax = nn.Softmax(dim=1)
@@ -84,19 +80,17 @@ class DiscriminativeVCL(VCL):
             x = F.relu(layer(x, sample_parameters=sample_parameters))
 
         # head
-        head = self.heads[head_idx]
-        for layer in head[:-1]:
-            x = F.relu(layer(x, sample_parameters=sample_parameters))
-        x = head[-1](x, sample_parameters=sample_parameters)
-
+        x = self.heads[head_idx](x, sample_parameters=sample_parameters)
         x = self.softmax(x)
+
         return x
 
     def vcl_loss(self, x, y, task_size, head_idx=0):
         return self._kl_divergence(head_idx) / task_size - self._avg_log_likelihood(x, y, head_idx)
 
     def point_estimate_loss(self, x, y, head_idx=0):
-        loss = torch.nn.CrossEntropyLoss()(self(x, head_idx, sample_parameters=False), y)
+        predictions = self(x, head_idx, sample_parameters=False)
+        loss = torch.nn.CrossEntropyLoss()(predictions, y)
         return loss
 
     def prediction(self, x, task=0):
@@ -108,9 +102,8 @@ class DiscriminativeVCL(VCL):
             if isinstance(layer, VariationalLayer):
                 layer.reset_for_next_task()
 
-        for layer in self.heads[head_idx]:
-            if isinstance(layer, VariationalLayer):
-                layer.reset_for_next_task()
+        if isinstance(self.heads[head_idx], VariationalLayer):
+            self.heads[head_idx].reset_for_next_task()
 
     def get_statistics(self) -> (list, dict):
         layer_statistics = []
@@ -131,13 +124,12 @@ class DiscriminativeVCL(VCL):
             model_statistics['average_b_var'] += layer_statistics[-1]['average_b_var']
 
         for head in self.heads:
-            for layer in head:
-                n_layers += 1
-                layer_statistics.append(layer.get_statistics())
-                model_statistics['average_w_mean'] += layer_statistics[-1]['average_w_mean']
-                model_statistics['average_b_mean'] += layer_statistics[-1]['average_b_mean']
-                model_statistics['average_w_var'] += layer_statistics[-1]['average_w_var']
-                model_statistics['average_b_var'] += layer_statistics[-1]['average_b_var']
+            n_layers += 1
+            layer_statistics.append(head.get_statistics())
+            model_statistics['average_w_mean'] += layer_statistics[-1]['average_w_mean']
+            model_statistics['average_b_mean'] += layer_statistics[-1]['average_b_mean']
+            model_statistics['average_w_var'] += layer_statistics[-1]['average_w_var']
+            model_statistics['average_b_var'] += layer_statistics[-1]['average_b_var']
 
         # todo averaging averages like this is actually incorrect (assumes equal num of params in each layer)
         model_statistics['average_w_mean'] /= n_layers
@@ -156,8 +148,7 @@ class DiscriminativeVCL(VCL):
         for layer in self.shared_layers:
             kl_divergence += layer.kl_divergence()
 
-        for layer in self.heads[head_idx]:
-            kl_divergence += layer.kl_divergence()
+        kl_divergence += self.heads[head_idx].kl_divergence()
 
         return kl_divergence
 
