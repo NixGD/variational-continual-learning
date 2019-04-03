@@ -39,7 +39,7 @@ def permuted_mnist():
     transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(n_tasks)]
 
     # create model, single-headed in permuted MNIST experiment
-    model = DiscriminativeVCL(MNIST_FLATTENED_DIM, n_classes, None, 0, (layer_width, layer_width))
+    model = DiscriminativeVCL(MNIST_FLATTENED_DIM, layer_width, n_tasks, 1, (layer_width, layer_width))
     # model = MultiHeadMLP(MNIST_FLATTENED_DIM, n_classes, 5)
 
     # model = DiscriminativeVCL(
@@ -68,10 +68,10 @@ def permuted_mnist():
 
     summary_logdir = os.path.join("logs", "disc_p_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
-    run_point_estimate_initialisation(model=model, train_data=mnist_train,
+    run_point_estimate_initialisation(model=model, train_data=mnist_train, train_task_ids=train_task_ids,
+                                      test_data=mnist_test, test_task_ids=test_task_ids,
                                       optimizer=optimizer, epochs=epochs,
-                                      batch_size=batch_size, device=device,
-                                      train_task_ids=train_task_ids)
+                                      batch_size=batch_size, device=device)
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(n_tasks):
@@ -198,10 +198,11 @@ def split_not_mnist():
     # each task is a binary classification task for a different pair of digits
     binarize_y = lambda y, task: (y == (2 * task + 1)).long()
 
-    run_point_estimate_initialisation(model=model, train_data=not_mnist_train,
+    run_point_estimate_initialisation(model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
+                                      test_data=not_mnist_test, test_task_ids=test_task_ids,
                                       optimizer=optimizer, epochs=epochs,
                                       batch_size=batch_size, device=device,
-                                      train_task_ids=train_task_ids, y_transform=binarize_y)
+                                      y_transform=binarize_y)
 
     for task_idx in range(n_tasks):
         run_task(
