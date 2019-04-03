@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import math
 import torch
 import torch.nn.init
 import torch.nn.functional as F
@@ -57,6 +58,11 @@ class MeanFieldGaussianLinear(VariationalLayer):
         self.register_buffer('prior_W_log_vars', torch.zeros(out_features, in_features))
         self.register_buffer('prior_b_means', torch.zeros(out_features))
         self.register_buffer('prior_b_log_vars', torch.zeros(out_features))
+
+        self.posterior_W_means = Parameter(torch.empty_like(self._buffers['prior_W_means'], requires_grad=True))
+        self.posterior_b_means = Parameter(torch.empty_like(self._buffers['prior_b_means'], requires_grad=True))
+        self.posterior_W_log_vars = Parameter(torch.empty_like(self._buffers['prior_W_log_vars'], requires_grad=True))
+        self.posterior_b_log_vars = Parameter(torch.empty_like(self._buffers['prior_b_log_vars'], requires_grad=True))
 
         self._initialize_posteriors()
 
@@ -129,9 +135,7 @@ class MeanFieldGaussianLinear(VariationalLayer):
     def _initialize_posteriors(self):
         # posteriors on the other hand are optimizable parameters - means are normally distributed, log_vars
         # have some small initial value
-        self.posterior_W_means = Parameter(0.01 * torch.randn_like(self._buffers['prior_W_means'], requires_grad=True))
-        self.posterior_b_means = Parameter(0.01 * torch.randn_like(self._buffers['prior_b_means'], requires_grad=True))
-        self.posterior_W_log_vars = Parameter(
-            torch.full_like(self._buffers['prior_W_log_vars'], self.ipv, requires_grad=True))
-        self.posterior_b_log_vars = Parameter(
-            torch.full_like(self._buffers['prior_b_log_vars'], self.ipv, requires_grad=True))
+        torch.nn.init.kaiming_uniform_(self.posterior_W_means, a=math.sqrt(5))
+        torch.nn.init.uniform_(self.posterior_b_means, -0.1, 0.1)
+        torch.nn.init.constant_(self.posterior_W_log_vars, math.log(self.ipv))
+        torch.nn.init.constant_(self.posterior_b_log_vars, math.log(self.ipv))
