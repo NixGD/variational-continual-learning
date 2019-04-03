@@ -5,6 +5,7 @@ from torchvision.datasets import MNIST
 from torchvision.transforms import Compose
 from torch.utils.data import ConcatDataset
 from models.vcl_nn_reworked import DiscriminativeVCL
+from models.simple import MLP, MultiHeadMLP
 from models.coreset import RandomCoreset
 from util.experiment_utils import run_point_estimate_initialisation, run_task
 from util.transforms import Flatten, Scale, Permute
@@ -39,6 +40,7 @@ def permuted_mnist():
 
     # create model, single-headed in permuted MNIST experiment
     model = DiscriminativeVCL(MNIST_FLATTENED_DIM, n_classes, None, 0, (layer_width, layer_width))
+    # model = MultiHeadMLP(MNIST_FLATTENED_DIM, n_classes, 5)
 
     # model = DiscriminativeVCL(
     #     x_dim=MNIST_FLATTENED_DIM, h_dim=N_CLASSES,
@@ -66,10 +68,10 @@ def permuted_mnist():
 
     summary_logdir = os.path.join("logs", "disc_p_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
-    run_point_estimate_initialisation(model=model, data=mnist_train,
+    run_point_estimate_initialisation(model=model, train_data=mnist_train,
                                       optimizer=optimizer, epochs=epochs,
                                       batch_size=batch_size, device=device,
-                                      task_ids=train_task_ids)
+                                      train_task_ids=train_task_ids)
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(n_tasks):
@@ -105,7 +107,8 @@ def split_mnist():
     mnist_test = MNIST(root='../data/', train=False, download=True, transform=transform)
 
     model = DiscriminativeVCL(x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes, n_heads=n_tasks,
-                              shared_h_dims=(layer_width, layer_width), head_h_dims=())
+                              shared_h_dims=(100, 100))
+    # model = MultiHeadMLP(MNIST_FLATTENED_DIM, n_classes, 5)
     # model = DiscriminativeVCL(
     #     x_dim=MNIST_FLATTENED_DIM, h_dim=n_classes,
     #     layer_width=layer_width, n_hidden_layers=n_hidden_layers,
@@ -135,10 +138,11 @@ def split_mnist():
     # each task is a binary classification task for a different pair of digits
     binarize_y = lambda y, task: (y == (2 * task + 1)).long()
 
-    run_point_estimate_initialisation(model=model, data=mnist_train,
+    run_point_estimate_initialisation(model=model, train_data=mnist_train, train_task_ids=train_task_ids,
+                                      test_data=mnist_test, test_task_ids=test_task_ids,
                                       optimizer=optimizer, epochs=epochs,
                                       batch_size=batch_size, device=device,
-                                      task_ids=train_task_ids, y_transform=binarize_y)
+                                      y_transform=binarize_y)
 
     for task_idx in range(n_tasks):
         run_task(
@@ -196,10 +200,10 @@ def split_not_mnist():
     # each task is a binary classification task for a different pair of digits
     binarize_y = lambda y, task: (y == (2 * task + 1)).long()
 
-    run_point_estimate_initialisation(model=model, data=not_mnist_train,
+    run_point_estimate_initialisation(model=model, train_data=not_mnist_train,
                                       optimizer=optimizer, epochs=epochs,
                                       batch_size=batch_size, device=device,
-                                      task_ids=train_task_ids, y_transform=binarize_y)
+                                      train_task_ids=train_task_ids, y_transform=binarize_y)
 
     for task_idx in range(n_tasks):
         run_task(

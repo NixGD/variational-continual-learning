@@ -3,14 +3,16 @@ from util.operations import task_subset, class_accuracy
 from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
+from util.plot_autograd import make_dot
 
 
-def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
+def run_point_estimate_initialisation(model, train_data, train_task_ids, test_data,
+                                      test_task_ids, optimizer, epochs,
                                       batch_size, device, task_idx=0,
                                       y_transform=None, multiheaded=True):
     print("Obtaining point estimate for posterior initialisation")
 
-    task_data = task_subset(data, task_ids, task_idx)
+    task_data = task_subset(train_data, train_task_ids, task_idx)
     loader = DataLoader(task_data, batch_size)
 
     for _ in tqdm(range(epochs), 'Epochs: '):
@@ -27,6 +29,27 @@ def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
             loss = model.point_estimate_loss(x, y_true, head_idx=task_idx)
             loss.backward()
             optimizer.step()
+
+    # test
+    task_accuracies = []
+    for test_task_idx in range(task_idx + 1):
+        head = test_task_idx if multiheaded else 0
+
+        task_data = task_subset(test_data, test_task_ids, test_task_idx)
+
+        x = torch.Tensor([x for x, _ in task_data])
+        y_true = torch.Tensor([y for _, y in task_data])
+        x = x.to(device)
+        y_true = y_true.to(device)
+
+        if y_transform is not None:
+            y_true = y_transform(y_true, test_task_idx)
+
+        y_pred = model.prediction(x, head)
+
+        acc = class_accuracy(y_pred, y_true)
+        print("After pre-training, performance on task {} is {}"
+              .format(test_task_idx, acc))
 
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
