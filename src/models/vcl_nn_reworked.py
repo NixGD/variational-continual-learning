@@ -6,7 +6,6 @@ import util.operations
 from layers.variational import VariationalLayer, MeanFieldGaussianLinear
 import math
 
-
 EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
 
 
@@ -50,11 +49,12 @@ class DiscriminativeVCL(VCL):
     continual learning of discriminative tasks.
     """
 
-    def __init__(self, x_dim, h_dim, y_dim=None, n_heads=0, shared_h_dims=(100, 100), head_h_dims=(100,), initial_posterior_variance=1e-6):
+    def __init__(self, x_dim, h_dim, y_dim, n_heads=1, shared_h_dims=(100, 100), head_h_dims=(),
+                 initial_posterior_variance=1e-6):
         super().__init__()
         # check for bad parameters
-        if n_heads != 0 and y_dim is None:
-            raise ValueError('The network is multi-headed: y_dim (dimension of head output) must be specified')
+        if n_heads < 1:
+            raise ValueError('Network requires at least one head.')
 
         self.x_dim = x_dim
         self.h_dim = h_dim
@@ -70,55 +70,47 @@ class DiscriminativeVCL(VCL):
             MeanFieldGaussianLinear(shared_dims[i], shared_dims[i + 1], self.ipv) for i in range(len(shared_dims) - 1)
         ])
         # list of heads, each head is a list of layers
-        if n_heads > 0:
-            self.heads = nn.ModuleList([
-                [MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv) for i in range(len(head_dims) - 1)] for _ in range(n_heads)
-            ])
+        self.heads = nn.ModuleList([
+            nn.ModuleList([MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv)
+                            for i in range(len(head_dims) - 1)])
+            for _ in range(n_heads)
+        ])
 
-        self.softmax = nn.Softmax(dim=0)
+        self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, x, head_idx, sample_parameters=True):
-        out = x
-        for layer in self.shared_layers[:1]:
-            out = F.relu(layer(out, sample_parameters=sample_parameters))
+    def forward(self, x, head_idx=0, sample_parameters=True):
+        # shared part
+        for layer in self.shared_layers:
+            x = F.relu(layer(x, sample_parameters=sample_parameters))
 
-        out = self.shared_layers[-1](out)
+        # head
+        head = self.heads[head_idx]
+        for layer in head[:-1]:
+            x = F.relu(layer(x, sample_parameters=sample_parameters))
+        x = head[-1](x, sample_parameters=sample_parameters)
 
-        # if network is multi-headed, then last shared layer is internal and needs ReLU
-        # also in this case apply head layers
-        if self.n_heads > 0:
-            out = F.relu(out)
+        x = self.softmax(x)
+        return x
 
-            head = self.heads[head_idx]
+    def vcl_loss(self, x, y, task_size, head_idx=0):
+        return self._kl_divergence(head_idx) / task_size - self._avg_log_likelihood(x, y, head_idx)
 
-            for layer in head[:-1]:
-                out = F.relu(layer(out, sample_parameters=sample_parameters))
-            out = head[-1](out, sample_parameters=sample_parameters)
+    def point_estimate_loss(self, x, y, head_idx=0):
+        loss = torch.nn.CrossEntropyLoss()(self(x, head_idx, sample_parameters=False), y)
+        return loss
 
-        out = self.softmax(out)
-        return out
-
-    def prediction(self, x, task):
+    def prediction(self, x, task=0):
         """ Returns an integer between 0 and self.out_size """
-        return torch.argmax(self.forward(x, task), dim=1)
+        return torch.argmax(self(x, task), dim=1)
 
     def reset_for_new_task(self, head_idx):
         for layer in self.shared_layers:
             if isinstance(layer, VariationalLayer):
                 layer.reset_for_next_task()
-        if self.n_heads > 0:
-            for layer in self.heads[head_idx]:
-                if isinstance(layer, VariationalLayer):
-                    layer.reset_for_next_task()
 
-    def vcl_loss(self, x, y, head_idx, task_size):
-        kl = self._kl_divergence(head_idx) / task_size
-        ll = self._avg_log_likelihood(x, y, head_idx)
-        return kl - ll
-
-    def point_estimate_loss(self, x, y, head_idx):
-        predictions = self.forward(x, head_idx, sample_parameters=False)
-        return torch.nn.CrossEntropyLoss()(predictions, y)
+        for layer in self.heads[head_idx]:
+            if isinstance(layer, VariationalLayer):
+                layer.reset_for_next_task()
 
     def get_statistics(self) -> (list, dict):
         layer_statistics = []
@@ -138,15 +130,14 @@ class DiscriminativeVCL(VCL):
             model_statistics['average_w_var'] += layer_statistics[-1]['average_w_var']
             model_statistics['average_b_var'] += layer_statistics[-1]['average_b_var']
 
-        if self.n_heads > 0:
-            for head in self.heads:
-                for layer in head:
-                    n_layers += 1
-                    layer_statistics.append(layer.get_statistics())
-                    model_statistics['average_w_mean'] += layer_statistics[-1]['average_w_mean']
-                    model_statistics['average_b_mean'] += layer_statistics[-1]['average_b_mean']
-                    model_statistics['average_w_var'] += layer_statistics[-1]['average_w_var']
-                    model_statistics['average_b_var'] += layer_statistics[-1]['average_b_var']
+        for head in self.heads:
+            for layer in head:
+                n_layers += 1
+                layer_statistics.append(layer.get_statistics())
+                model_statistics['average_w_mean'] += layer_statistics[-1]['average_w_mean']
+                model_statistics['average_b_mean'] += layer_statistics[-1]['average_b_mean']
+                model_statistics['average_w_var'] += layer_statistics[-1]['average_w_var']
+                model_statistics['average_b_var'] += layer_statistics[-1]['average_b_var']
 
         # todo averaging averages like this is actually incorrect (assumes equal num of params in each layer)
         model_statistics['average_w_mean'] /= n_layers
@@ -165,14 +156,13 @@ class DiscriminativeVCL(VCL):
         for layer in self.shared_layers:
             kl_divergence += layer.kl_divergence()
 
-        if self.n_heads > 0:
-            for layer in self.heads[head_idx]:
-                kl_divergence += layer.kl_divergence()
+        for layer in self.heads[head_idx]:
+            kl_divergence += layer.kl_divergence()
 
         return kl_divergence
 
     def _avg_log_likelihood(self, x, y, head):
-        predictions = self.forward(x, head)
+        predictions = self(x, head)
 
         # Make mask to select probabilities associated with actual y values
         mask = torch.zeros(predictions.size(), dtype=torch.uint8)
@@ -191,7 +181,8 @@ class GenerativeVCL(VCL):
     continual learning of generative tasks.
     """
 
-    def __init__(self, z_dim, h_dim, x_dim, n_heads=0, shared_h_dims=(500,), head_h_dims=(500,), initial_posterior_variance=1e-6):
+    def __init__(self, z_dim, h_dim, x_dim, n_heads=0, shared_h_dims=(500,), head_h_dims=(500,),
+                 initial_posterior_variance=1e-6):
         super().__init__()
         # dimensions
         self.z_dim = z_dim
@@ -206,7 +197,8 @@ class GenerativeVCL(VCL):
         # layers in task-specific input heads
         if n_heads > 1:
             self.heads = nn.ModuleList([
-                [MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv) for i in range(len(head_dims) - 1)] for _ in
+                [MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv) for i in range(len(head_dims) - 1)]
+                for _ in
                 range(n_heads)
             ])
         # list of layers in shared network
@@ -230,6 +222,9 @@ class GenerativeVCL(VCL):
         pass
 
     def point_estimate_loss(self, x, y, head_idx):
+        pass
+
+    def reset_for_new_task(self, head_idx):
         pass
 
     def get_statistics(self) -> dict:
