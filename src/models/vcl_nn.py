@@ -5,9 +5,9 @@ from util.operations import concatenate_flattened
 from layers.distributional import DistributionalLinear
 import math
 
-
+TRAIN_NUM_SAMPLES = 10
+TEST_NUM_SAMPLES = 50
 EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
-
 
 class DiscriminativeVCL(nn.Module):
     """
@@ -16,13 +16,15 @@ class DiscriminativeVCL(nn.Module):
     """
 
     def __init__(self, in_size: int, out_size: int, layer_width: int,
-                 n_hidden_layers: int, n_tasks: int, initial_posterior_var: int):
+                 n_hidden_layers: int, n_heads: int, initial_posterior_var: int):
         super().__init__()
         self.input_size = in_size
         self.out_size = out_size
         self.n_hidden_layers = n_hidden_layers
         self.layer_width = layer_width
-        self.n_tasks = n_tasks
+        self.n_heads = n_heads
+
+        print("Number of heads:", n_heads)
 
         self.prior, self.posterior = None, None
         self.head_prior, self.head_posterior = None, None
@@ -57,7 +59,7 @@ class DiscriminativeVCL(nn.Module):
         self.head_prior = (head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars)
         return self
 
-    def forward(self, x, task):
+    def forward(self, x, head):
         """ Forward pass of the model on an input. """
         # sample layer parameters from posterior distribution
         (w_means, w_log_vars), (b_means, b_log_vars) = self.posterior
@@ -69,27 +71,24 @@ class DiscriminativeVCL(nn.Module):
         for weight, bias in sampled_layers:
             x = F.relu(x @ weight + bias)
 
-        head_weight, head_bias = list(sampled_head_layers)[task]
+        head_weight, head_bias = list(sampled_head_layers)[head]
         x = x @ head_weight + head_bias
-
-        # Apply final softmax
-        x = torch.nn.Softmax(dim=1)(x)
 
         return x
 
-    def vcl_loss(self, x, y, head, task_size) -> torch.Tensor:
+    def vcl_loss(self, x, y, head, task_size, num_samples=TRAIN_NUM_SAMPLES) -> torch.Tensor:
         """
         Returns the loss of the model, as described in equation 4 of the Variational
         Continual Learning paper (https://arxiv.org/abs/1710.10628).
         """
-        return self._calculate_kl_term(head).cpu() / task_size - self._log_prob(x, y, head)
+        return self._calculate_kl_term(head).cpu() / task_size - self._log_prob(x, y, head, num_samples)
 
-    def point_estimate_loss(self, x, y, task=0):
+    def point_estimate_loss(self, x, y, head=0):
         """
         Returns a loss defined in terms of a simplified forward pass that
         doesn't use sampling, and so uses the posterior means but not the
         variances. Used as part of model initialisation to optimise the
-        posterior means to point-estimates for the first task.
+        posterior means to point-estimates for the first head.
         """
         (w_means, _), (b_means, _) = self.posterior
         (head_w_means, _), (head_b_means, _) = self.head_posterior
@@ -97,13 +96,19 @@ class DiscriminativeVCL(nn.Module):
         for weight, bias in zip(w_means, b_means):
             x = F.relu(x @ weight + bias)
 
-        x = x @ head_w_means[task] + head_b_means[task]
+        x = x @ head_w_means[head] + head_b_means[head]
 
         return nn.CrossEntropyLoss()(x, y)
 
-    def prediction(self, x, task):
-        """ Returns an integer between 0 and self.out_size """
-        return torch.argmax(self.forward(x, task), dim=1)
+    def prediction(self, x, head, num_samples=TEST_NUM_SAMPLES):
+        """Returns an integer between 0 and self.out_size"""
+        outputs = torch.empty(num_samples, len(x), self.out_size)
+        for i in range(num_samples):
+            outputs[i] = nn.Softmax(dim=1)(self.forward(x, head))
+
+        predictions = outputs.mean(dim=0)
+
+        return torch.argmax(predictions, dim=1)
 
     def reset_for_new_task(self, head):
         """
@@ -166,17 +171,12 @@ class DiscriminativeVCL(nn.Module):
         # Sum KL over all parameters
         return 0.5 * kl_elementwise.sum()
 
-    def _log_prob(self, x, y, head):
-        predictions = self.forward(x, head)
+    def _log_prob(self, x, y, head, num_samples):
+        outputs = []
+        for i in range(num_samples):
+            outputs.append(self.forward(x, head))
 
-        # Make mask to select probabilities associated with actual y values
-        mask = torch.zeros(predictions.size(), dtype=torch.uint8)
-        for i in range(predictions.size()[0]):
-            mask[i][int(y[i].item())] = 1
-
-        # Select probabilities, log and sum them
-        y_preds = torch.masked_select(predictions.cpu(), mask)
-        return torch.mean(torch.log(y_preds + EPSILON))
+        return - nn.CrossEntropyLoss()(torch.cat(outputs), y.repeat(num_samples).view(-1))
 
     def _sample_parameters(self, w_means, b_means, w_log_vars, b_log_vars):
         # sample weights and biases from normal distributions
@@ -208,9 +208,9 @@ class DiscriminativeVCL(nn.Module):
 
         self.prior = ((prior_w_means, prior_w_log_vars), (prior_b_means, prior_b_log_vars))
 
-        head_prior_w_means = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_tasks)]
+        head_prior_w_means = [torch.zeros(self.layer_width, self.out_size) for t in range(self.n_heads)]
         head_prior_w_log_vars = [torch.zeros_like(t) for t in head_prior_w_means]
-        head_prior_b_means = [torch.zeros(self.out_size) for t in range(self.n_tasks)]
+        head_prior_b_means = [torch.zeros(self.out_size) for t in range(self.n_heads)]
         head_prior_b_log_vars = [torch.zeros_like(t) for t in head_prior_b_means]
 
         self.head_prior = ((head_prior_w_means, head_prior_w_log_vars), (head_prior_b_means, head_prior_b_log_vars))
@@ -237,7 +237,7 @@ class DiscriminativeVCL(nn.Module):
         # prior to training we will run a procedure to optimise these values to
         # point-estimates of the parameters for the first task.
         for t in posterior_w_means + posterior_b_means + head_posterior_w_means + head_posterior_b_means:
-            torch.nn.init.normal_(t, mean=0, std=1)
+            torch.nn.init.normal_(t, mean=0, std=0.1)
 
         # Initialise the posterior variances with the given constant value.
         for t in posterior_w_log_vars + posterior_b_log_vars + head_posterior_w_log_vars + head_posterior_b_log_vars:
@@ -254,7 +254,7 @@ class DiscriminativeVCL(nn.Module):
             self.register_buffer("prior_b_means_" + str(i), prior_b_means[i])
             self.register_buffer("prior_b_log_vars_" + str(i), prior_b_log_vars[i])
 
-        for i in range(self.n_tasks):
+        for i in range(self.n_heads):
             self.register_buffer("head_prior_w_means_" + str(i), head_prior_w_means[i])
             self.register_buffer("head_prior_w_log_vars_" + str(i), head_prior_w_log_vars[i])
             self.register_buffer("head_prior_b_means_" + str(i), head_prior_b_means[i])
@@ -266,7 +266,7 @@ class DiscriminativeVCL(nn.Module):
             self.register_parameter("posterior_b_means_" + str(i), posterior_b_means[i])
             self.register_parameter("posterior_b_log_vars_" + str(i), posterior_b_log_vars[i])
 
-        for i in range(self.n_tasks):
+        for i in range(self.n_heads):
             self.register_parameter("head_posterior_w_means_" + str(i), head_posterior_w_means[i])
             self.register_parameter("head_posterior_w_log_vars_" + str(i), head_posterior_w_log_vars[i])
             self.register_parameter("head_posterior_b_means_" + str(i), head_posterior_b_means[i])

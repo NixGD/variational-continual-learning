@@ -1,15 +1,19 @@
 import torch
+import torch.optim as optim
 from util.operations import task_subset, class_accuracy
 from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
-
-def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
-                                      batch_size, device, task_idx=0,
-                                      y_transform=None, multiheaded=True):
+def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
+                                      device, lr, task_idx=0, y_transform=None,
+                                      multiheaded=True):
 
     print("Obtaining point estimate for posterior initialisation")
+
+    head = task_idx if multiheaded else 0
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
     task_data = task_subset(data, task_ids, task_idx)
     loader = DataLoader(task_data, batch_size)
@@ -24,16 +28,18 @@ def run_point_estimate_initialisation(model, data, optimizer, epochs, task_ids,
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
 
-            loss = model.point_estimate_loss(x, y_true, task=task_idx)
+            loss = model.point_estimate_loss(x, y_true, head=head)
             loss.backward()
             optimizer.step()
 
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
-             task_idx, optimizer, coreset, epochs, batch_size, save_as,
-             device, y_transform=None, multiheaded=True, summary_writer=None):
+             task_idx, coreset, epochs, batch_size, save_as, device, lr,
+             y_transform=None, multiheaded=True, summary_writer=None):
 
     print('TASK', task_idx)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
     head = task_idx if multiheaded else 0
 
@@ -60,6 +66,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
         if summary_writer is not None:
             summary_writer.add_scalars("loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
+
+    model.reset_for_new_task(head)
 
     # test
     model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
