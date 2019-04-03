@@ -28,7 +28,6 @@ def permuted_mnist():
     """
     n_classes = 10
     layer_width = 100
-    n_hidden_layers = 2
     n_tasks = 10
     multiheaded = False
     coreset_size = 200
@@ -47,7 +46,7 @@ def permuted_mnist():
     coreset = RandomCoreset(size=coreset_size)
 
     mnist_train = ConcatDataset(
-        [MNIST(root='../data/', train=True, download=True, transform=t) for t in transforms]
+        [MNIST(root='./data/', train=True, download=True, transform=t) for t in transforms]
     )
     task_size = len(mnist_train) // n_tasks
     train_task_ids = torch.cat(
@@ -55,7 +54,7 @@ def permuted_mnist():
     )
 
     mnist_test = ConcatDataset(
-        [MNIST(root='../data/', train=False, download=True, transform=t) for t in transforms]
+        [MNIST(root='./data/', train=False, download=True, transform=t) for t in transforms]
     )
     task_size = len(mnist_test) // n_tasks
     test_task_ids = torch.cat(
@@ -100,8 +99,8 @@ def split_mnist():
     transform = Compose([Flatten(), Scale()])
 
     # download dataset
-    mnist_train = MNIST(root='../data/', train=True, download=True, transform=Flatten())
-    mnist_test = MNIST(root='../data/', train=False, download=True, transform=Flatten())
+    mnist_train = MNIST(root='./data', train=True, download=True, transform=Flatten())
+    mnist_test = MNIST(root='./data/', train=False, download=True, transform=Flatten())
 
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
