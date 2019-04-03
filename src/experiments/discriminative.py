@@ -7,7 +7,7 @@ from torch.utils.data import ConcatDataset
 from models.vcl_nn import DiscriminativeVCL
 from models.coreset import RandomCoreset
 from util.experiment_utils import run_point_estimate_initialisation, run_task
-from util.transforms import Flatten, Permute
+from util.transforms import Flatten, Scale, Permute
 from util.datasets import NOTMNIST
 from tensorboardX import SummaryWriter
 import os
@@ -34,7 +34,7 @@ def permuted_mnist():
     BATCH_SIZE = 256
 
     # flattening and permutation used for each task
-    transforms = [Compose([Flatten(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(N_TASKS)]
+    transforms = [Compose([Flatten(), Scale(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(N_TASKS)]
 
     # create model, single-headed in permuted MNIST experiment
     model = DiscriminativeVCL(
@@ -94,9 +94,11 @@ def split_mnist():
     EPOCHS = 120
     BATCH_SIZE = 50000
 
+    transform = Compose([Flatten(), Scale()])
+
     # download dataset
-    mnist_train = MNIST(root='../data/', train=True, download=True, transform=Flatten())
-    mnist_test = MNIST(root='../data/', train=False, download=True, transform=Flatten())
+    mnist_train = MNIST(root='../data/', train=True, download=True, transform=transform)
+    mnist_test = MNIST(root='../data/', train=False, download=True, transform=transform)
 
     model = DiscriminativeVCL(
         in_size=MNIST_FLATTENED_DIM, out_size=N_CLASSES,
