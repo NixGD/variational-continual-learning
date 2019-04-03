@@ -23,6 +23,6 @@ def concatenate_flattened(*tensors) -> torch.Tensor:
     return torch.cat([torch.reshape(t, (-1,)) for t in tensors])
 
 
-def task_subset(data: Dataset, task_ids: torch.Tensor, task: int,) -> torch.Tensor:
+def task_subset(data: Dataset, task_ids: torch.Tensor, task: int,) -> Dataset:
     idx_list = torch.arange(0, len(task_ids))[task_ids == task]
     return Subset(data, idx_list)

@@ -32,7 +32,7 @@ def permuted_mnist():
     n_tasks = 10
     multiheaded = False
     coreset_size = 200
-    epochs = 20
+    epochs = 100
     batch_size = 256
 
     # flattening and permutation used for each task
