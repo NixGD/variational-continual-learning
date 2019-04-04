@@ -94,13 +94,10 @@ class DiscriminativeVCL(VCL):
         return x_out
 
     def vcl_loss(self, x, y, head_idx, task_size):
-        kl = self._kl_divergence(head_idx) / task_size
-        return kl + torch.nn.NLLLoss()(self(x, head_idx), y)
+        return self._kl_divergence(head_idx) / task_size + torch.nn.NLLLoss()(self(x, head_idx), y)
 
     def point_estimate_loss(self, x, y, head_idx=0):
-        predictions = self(x, head_idx, sample_parameters=False)
-        loss = torch.nn.NLLLoss()(predictions, y)
-        return loss
+        return torch.nn.NLLLoss()(self(x, head_idx, sample_parameters=False), y)
 
     def prediction(self, x, task=0):
         """ Returns an integer between 0 and self.out_size """
@@ -149,7 +146,7 @@ class DiscriminativeVCL(VCL):
         return layer_statistics, model_statistics
 
     def _kl_divergence(self, head_idx):
-        kl_divergence = torch.zeros(1, requires_grad=False)
+        kl_divergence = torch.zeros(1, requires_grad=False).to(self.device)
 
         # since we are assuming that all parameters are normally distributed independently
         # of each other, the KL divergence formula breaks down into summation of the KL

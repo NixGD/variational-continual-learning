@@ -29,7 +29,7 @@ def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
 
-            loss = model.point_estimate_loss(x, y_true, task_idx)
+            loss = model.point_estimate_loss(x, y_true, head)
             loss.backward()
             optimizer.step()
 
