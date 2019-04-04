@@ -23,8 +23,8 @@ def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
         for batch in loader:
             optimizer.zero_grad()
             x, y_true = batch
-            # x = x.to(device)
-            # y_true = y_true.to(device)
+            x = x.to(device)
+            y_true = y_true.to(device)
 
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)

@@ -44,7 +44,7 @@ def permuted_mnist():
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
         initial_posterior_variance=INITIAL_POSTERIOR_VAR
-    )
+    ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
@@ -110,7 +110,7 @@ def split_mnist():
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
         initial_posterior_variance=INITIAL_POSTERIOR_VAR
-    )
+    ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
@@ -177,7 +177,7 @@ def split_not_mnist():
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
-    )
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
@@ -203,7 +203,7 @@ def split_not_mnist():
                                       epochs=epochs, batch_size=batch_size,
                                       device=device, multiheaded=multiheaded,
                                       task_ids=train_task_ids, lr=LR,
-                                      y_transform=binarize_y)
+                                      y_transform=binarize_y, optimizer=optimizer)
 
     for task_idx in range(n_tasks):
         run_task(
@@ -212,7 +212,7 @@ def split_not_mnist():
             coreset=coreset, task_idx=task_idx, epochs=epochs, lr=LR,
             batch_size=batch_size, save_as="disc_s_n_mnist", device=device,
             multiheaded=multiheaded, y_transform=binarize_y,
-            summary_writer=writer
+            summary_writer=writer, optimizer=optimizer
         )
 
     writer.close()
