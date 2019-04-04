@@ -1,15 +1,19 @@
 from abc import ABC, abstractmethod
 import math
 import torch
+import torch.autograd
 import torch.nn.init
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from torch._jit_internal import weak_module, weak_script_method
-import util.operations
 
 
 @weak_module
 class VariationalLayer(torch.nn.Module, ABC):
+    def __init__(self, epsilon=1e-8):
+        super().__init__()
+        self.epsilon = epsilon
+
     @abstractmethod
     def forward(self, x, sample_parameters=True):
         pass
@@ -19,7 +23,7 @@ class VariationalLayer(torch.nn.Module, ABC):
         pass
 
     @abstractmethod
-    def kl_divergence(self) -> float:
+    def kl_divergence(self) -> torch.Tensor:
         pass
 
     @abstractmethod
@@ -46,12 +50,11 @@ class MeanFieldGaussianLinear(VariationalLayer):
           are the same shape as the input and :math:`H_{out} = \text{out\_features}`.
     """
 
-    def __init__(self, in_features, out_features, initial_posterior_variance=1e-6, epsilon=1e-8):
-        super().__init__()
+    def __init__(self, in_features, out_features, initial_posterior_variance=1e-3, epsilon=1e-8):
+        super().__init__(epsilon)
         self.in_features = in_features
         self.out_features = out_features
         self.ipv = initial_posterior_variance
-        self.epsilon = epsilon
 
         # priors are not optimizable parameters - all means and log-variances are zero
         self.register_buffer('prior_W_means', torch.zeros(out_features, in_features))
@@ -77,27 +80,35 @@ class MeanFieldGaussianLinear(VariationalLayer):
 
     def reset_for_next_task(self):
         """ Overwrites the current prior with the current posterior. """
-        self._buffers['prior_W_means'] = self.posterior_W_means.clone().detach()
-        self._buffers['prior_W_log_vars'] = self.posterior_W_log_vars.clone().detach()
-        self._buffers['prior_b_means'] = self.posterior_b_means.clone().detach()
-        self._buffers['prior_b_log_vars'] = self.posterior_b_log_vars.clone().detach()
+        self._buffers['prior_W_means'].data.copy_(self.posterior_W_means.data)
+        self._buffers['prior_W_log_vars'].data.copy_(self.posterior_W_log_vars.data)
+        self._buffers['prior_b_means'].data.copy_(self.posterior_b_means.data)
+        self._buffers['prior_b_log_vars'].data.copy_(self.posterior_b_log_vars.data)
 
-    # def reset_parameters(self):
-    #     """ Set the posteriors to the initial priors. """
-    #     self._initialize_posteriors()
-
-    def kl_divergence(self) -> float:
+    def kl_divergence(self) -> torch.Tensor:
         """ Returns KL(posterior, prior) for the parameters of this layer. """
         # obtain flattened means, log variances, and variances of the prior distribution
-        prior_means = util.operations.concatenate_flattened(self._buffers['prior_W_means'],
-                                                            self._buffers['prior_b_means'])
-        prior_log_vars = util.operations.concatenate_flattened(self._buffers['prior_W_log_vars'],
-                                                               self._buffers['prior_b_log_vars'])
+        prior_means = torch.autograd.Variable(torch.cat(
+            (torch.reshape(self._buffers['prior_W_means'], (-1,)),
+             torch.reshape(self._buffers['prior_b_means'], (-1,)))),
+            requires_grad=False
+        )
+        prior_log_vars = torch.autograd.Variable(torch.cat(
+            (torch.reshape(self._buffers['prior_W_log_vars'], (-1,)),
+             torch.reshape(self._buffers['prior_b_log_vars'], (-1,)))),
+            requires_grad=False
+        )
         prior_vars = torch.exp(prior_log_vars)
 
         # obtain flattened means, log variances, and variances of the approximate posterior distribution
-        posterior_means = util.operations.concatenate_flattened(self.posterior_W_means, self.posterior_b_means)
-        posterior_log_vars = util.operations.concatenate_flattened(self.posterior_W_log_vars, self.posterior_b_log_vars)
+        posterior_means = torch.cat(
+            (torch.reshape(self.posterior_W_means, (-1,)),
+             torch.reshape(self.posterior_b_means, (-1,))),
+        )
+        posterior_log_vars = torch.cat(
+            (torch.reshape(self.posterior_W_log_vars, (-1,)),
+             torch.reshape(self.posterior_b_log_vars, (-1,))),
+        )
         posterior_vars = torch.exp(posterior_log_vars)
 
         # compute kl divergence (this computation is valid for multivariate diagonal Gaussians)
@@ -105,7 +116,7 @@ class MeanFieldGaussianLinear(VariationalLayer):
                          torch.pow(prior_means - posterior_means, 2) / (prior_vars + self.epsilon) - \
                          1 + prior_log_vars - posterior_log_vars
 
-        return 0.5 * kl_elementwise.sum().item()
+        return 0.5 * kl_elementwise.sum()
 
     def get_statistics(self) -> dict:
         statistics = {
@@ -135,7 +146,7 @@ class MeanFieldGaussianLinear(VariationalLayer):
     def _initialize_posteriors(self):
         # posteriors on the other hand are optimizable parameters - means are normally distributed, log_vars
         # have some small initial value
-        torch.nn.init.kaiming_uniform_(self.posterior_W_means, a=math.sqrt(5))
+        torch.nn.init.normal_(self.posterior_W_means, mean=0, std=0.1)
         torch.nn.init.uniform_(self.posterior_b_means, -0.1, 0.1)
         torch.nn.init.constant_(self.posterior_W_log_vars, math.log(self.ipv))
         torch.nn.init.constant_(self.posterior_b_log_vars, math.log(self.ipv))

@@ -16,7 +16,7 @@ def class_accuracy(pred: torch.Tensor, true: torch.Tensor) -> float:
     return 100 * (pred.int() == true.int()).sum().item() / len(true)
 
 
-def concatenate_flattened(*tensors) -> torch.Tensor:
+def concatenate_flattened(tensors) -> torch.Tensor:
     """
     Given list of tensors, flattens each and concatenates their values.
     """

@@ -4,16 +4,17 @@ from util.operations import task_subset, class_accuracy
 from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
+from util.plot_autograd import make_dot
+
 
 def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
                                       device, lr, task_idx=0, y_transform=None,
-                                      multiheaded=True):
+                                      multiheaded=True, optimizer=None):
 
     print("Obtaining point estimate for posterior initialisation")
 
     head = task_idx if multiheaded else 0
-
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optimizer if optimizer is not None else optim.Adam(model.parameters(), lr=lr)
 
     task_data = task_subset(data, task_ids, task_idx)
     loader = DataLoader(task_data, batch_size)
@@ -22,24 +23,24 @@ def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
         for batch in loader:
             optimizer.zero_grad()
             x, y_true = batch
-            x = x.to(device)
-            y_true = y_true.to(device)
+            # x = x.to(device)
+            # y_true = y_true.to(device)
 
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
 
-            loss = model.point_estimate_loss(x, y_true, head_idx=task_idx)
+            loss = model.point_estimate_loss(x, y_true, task_idx)
             loss.backward()
             optimizer.step()
 
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
              task_idx, coreset, epochs, batch_size, save_as, device, lr,
-             y_transform=None, multiheaded=True, summary_writer=None):
+             y_transform=None, multiheaded=True, summary_writer=None, optimizer=None):
 
     print('TASK', task_idx)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optimizer if optimizer is not None else optim.Adam(model.parameters(), lr=lr)
 
     head = task_idx if multiheaded else 0
 
@@ -58,11 +59,15 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
             if y_transform is not None:
                 y_true = y_transform(y_true, task_idx)
 
-            loss = model.vcl_loss(x, y_true, head, len(task_data))
+            loss = model.vcl_loss(x, y_true, len(task_data), head)
+            # loss = model.vcl_loss(x, y_true, head, len(task_data))
             epoch_loss += len(x) * loss.item()
 
             loss.backward()
             optimizer.step()
+
+            # dot = make_dot(loss, model.named_parameters())
+            # dot.view()
 
         if summary_writer is not None:
             summary_writer.add_scalars("loss", {"TASK_" + str(task_idx): epoch_loss / len(task_data)}, epoch)
@@ -95,14 +100,14 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
 
         task_accuracies.append(acc)
 
-    if summary_writer is not None:
-        task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
-        layer_statistics, model_statistics = model.get_statistics()
-        summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
-        summary_writer.add_scalar("average_posterior_w_variance", model_statistics['average_w_var'], task_idx + 1)
-        summary_writer.add_scalar("average_posterior_w_mean", model_statistics['average_w_mean'], task_idx + 1)
-        summary_writer.add_scalar("average_posterior_b_variance", model_statistics['average_b_var'], task_idx + 1)
-        summary_writer.add_scalar("average_posterior_b_mean", model_statistics['average_b_mean'], task_idx + 1)
+    # if summary_writer is not None:
+    #     task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
+    #     layer_statistics, model_statistics = model.get_statistics()
+    #     summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
+    #     summary_writer.add_scalar("average_posterior_w_variance", model_statistics['average_w_var'], task_idx + 1)
+    #     summary_writer.add_scalar("average_posterior_w_mean", model_statistics['average_w_mean'], task_idx + 1)
+    #     summary_writer.add_scalar("average_posterior_b_variance", model_statistics['average_b_var'], task_idx + 1)
+    #     summary_writer.add_scalar("average_posterior_b_mean", model_statistics['average_b_mean'], task_idx + 1)
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')

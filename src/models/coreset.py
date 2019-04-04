@@ -59,6 +59,7 @@ class Coreset():
                         y_true = y_transform(y_true, task_idx)
 
                     loss = model.vcl_loss(x, y_true, len(task_data), head)
+                    # loss = model.vcl_loss(x, y_true, head, len(task_data))
                     loss.backward()
                     optimizer.step()
 

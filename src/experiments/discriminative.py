@@ -5,6 +5,8 @@ from torchvision.datasets import MNIST
 from torchvision.transforms import Compose
 from torch.utils.data import ConcatDataset
 from models.vcl_nn_reworked import DiscriminativeVCL
+from models.vcl_nn import DiscriminativeVCL as OriginalVCL
+from models.simple import MultiHeadMLP
 from models.coreset import RandomCoreset
 from util.experiment_utils import run_point_estimate_initialisation, run_task
 from util.transforms import Flatten, Scale, Permute
@@ -99,13 +101,18 @@ def split_mnist():
     transform = Compose([Flatten(), Scale()])
 
     # download dataset
-    mnist_train = MNIST(root='./data', train=True, download=True, transform=Flatten())
-    mnist_test = MNIST(root='./data/', train=False, download=True, transform=Flatten())
+    mnist_train = MNIST(root='data', train=True, download=True, transform=transform)
+    mnist_test = MNIST(root='data/', train=False, download=True, transform=transform)
 
+    # model = OriginalVCL(in_size=MNIST_FLATTENED_DIM, out_size=n_classes, layer_width=layer_width,
+    #                     n_hidden_layers=n_hidden_layers, n_heads=n_tasks, initial_posterior_var=INITIAL_POSTERIOR_VAR)
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
-        n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width)
+        n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
+        initial_posterior_variance=INITIAL_POSTERIOR_VAR
     )
+    optimizer = optim.Adam(model.parameters(), lr=LR)
+    # model = MultiHeadMLP(MNIST_FLATTENED_DIM, n_classes, n_tasks)
 
     coreset = RandomCoreset(size=coreset_size)
 
@@ -134,7 +141,7 @@ def split_mnist():
                                       epochs=epochs, batch_size=batch_size,
                                       device=device, multiheaded=multiheaded,
                                       lr=LR, task_ids=train_task_ids,
-                                      y_transform=binarize_y)
+                                      y_transform=binarize_y, optimizer=optimizer)
 
     for task_idx in range(n_tasks):
         run_task(
@@ -142,7 +149,7 @@ def split_mnist():
             test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
             save_as="disc_s_mnist", device=device, multiheaded=multiheaded,
-            y_transform=binarize_y, summary_writer=writer
+            y_transform=binarize_y, summary_writer=writer, optimizer=optimizer
         )
 
     writer.close()

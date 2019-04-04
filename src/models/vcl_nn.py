@@ -15,7 +15,7 @@ class DiscriminativeVCL(nn.Module):
     """
 
     def __init__(self, in_size: int, out_size: int, layer_width: int,
-                 n_hidden_layers: int, n_heads: int, initial_posterior_var: int):
+                 n_hidden_layers: int, n_heads: int, initial_posterior_var: float):
         super().__init__()
         self.input_size = in_size
         self.out_size = out_size
@@ -80,7 +80,9 @@ class DiscriminativeVCL(nn.Module):
         Returns the loss of the model, as described in equation 4 of the Variational
         Continual Learning paper (https://arxiv.org/abs/1710.10628).
         """
-        return self._calculate_kl_term(head).cpu() / task_size - self._log_prob(x, y, head, num_samples)
+        kl = self._calculate_kl_term(head).cpu() / task_size
+        lp = self._log_prob(x, y, head, num_samples)
+        return kl - lp
 
     def point_estimate_loss(self, x, y, head=0):
         """

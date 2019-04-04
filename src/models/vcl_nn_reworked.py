@@ -6,7 +6,7 @@ import util.operations
 from layers.variational import VariationalLayer, MeanFieldGaussianLinear
 import math
 
-EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
+EPSILON = 1e-20  # Small value to avoid divide-by-zero and log(zero) problems
 
 
 class VCL(nn.Module, ABC):
@@ -37,10 +37,6 @@ class VCL(nn.Module, ABC):
     def _kl_divergence(self, head_idx) -> float:
         pass
 
-    @abstractmethod
-    def _avg_log_likelihood(self, x, y, head_idx) -> float:
-        pass
-
 
 class DiscriminativeVCL(VCL):
     """
@@ -49,7 +45,8 @@ class DiscriminativeVCL(VCL):
     continual learning of discriminative tasks.
     """
 
-    def __init__(self, x_dim, h_dim, y_dim, n_heads=1, shared_h_dims=(100, 100), initial_posterior_variance=1e-6):
+    def __init__(self, x_dim, h_dim, y_dim, n_heads=1, shared_h_dims=(100, 100),
+                 initial_posterior_variance=1e-6, mc_sampling_n=10):
         super().__init__()
         # check for bad parameters
         if n_heads < 1:
@@ -60,37 +57,48 @@ class DiscriminativeVCL(VCL):
         self.y_dim = y_dim
         self.n_heads = n_heads
         self.ipv = initial_posterior_variance
+        self.mc_sampling_n = mc_sampling_n
 
         shared_dims = [x_dim] + list(shared_h_dims) + [h_dim]
 
         # list of layers in shared network
         self.shared_layers = nn.ModuleList([
-            MeanFieldGaussianLinear(shared_dims[i], shared_dims[i + 1], self.ipv) for i in range(len(shared_dims) - 1)
+            MeanFieldGaussianLinear(shared_dims[i], shared_dims[i + 1], self.ipv, EPSILON) for i in range(len(shared_dims) - 1)
         ])
         # list of heads, each head is a list of layers
         self.heads = nn.ModuleList([
-            MeanFieldGaussianLinear(self.h_dim, self.y_dim, self.ipv) for _ in range(n_heads)
+            MeanFieldGaussianLinear(self.h_dim, self.y_dim, self.ipv, EPSILON) for _ in range(n_heads)
         ])
 
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x, head_idx=0, sample_parameters=True):
-        # shared part
-        for layer in self.shared_layers:
-            x = F.relu(layer(x, sample_parameters=sample_parameters))
+        x_out = torch.zeros(size=(x.size()[0], self.y_dim))
 
-        # head
-        x = self.heads[head_idx](x, sample_parameters=sample_parameters)
-        x = self.softmax(x)
+        # repeat forward pass n times to sample layer params multiple times
+        for _ in range(self.mc_sampling_n if sample_parameters else 1):
+            x_in = x
+            # shared part
+            for layer in self.shared_layers:
+                x_in = F.relu(layer(x_in, sample_parameters=sample_parameters))
 
-        return x
+            # head
+            x_in = self.heads[head_idx](x_in, sample_parameters=sample_parameters)
+            x_in = self.softmax(x_in)
+
+            x_out.add_(x_in)
+
+        x_out.div_(self.mc_sampling_n)
+
+        return x_out
 
     def vcl_loss(self, x, y, task_size, head_idx=0):
-        return self._kl_divergence(head_idx) / task_size - self._avg_log_likelihood(x, y, head_idx)
+        kl = self._kl_divergence(head_idx) / task_size
+        return kl + torch.nn.NLLLoss()(self(x, head_idx), y)
 
     def point_estimate_loss(self, x, y, head_idx=0):
         predictions = self(x, head_idx, sample_parameters=False)
-        loss = torch.nn.CrossEntropyLoss()(predictions, y)
+        loss = torch.nn.NLLLoss()(predictions, y)
         return loss
 
     def prediction(self, x, task=0):
@@ -140,29 +148,17 @@ class DiscriminativeVCL(VCL):
         return layer_statistics, model_statistics
 
     def _kl_divergence(self, head_idx):
-        kl_divergence = 0
+        kl_divergence = torch.zeros(1, requires_grad=False)
 
         # since we are assuming that all parameters are normally distributed independently
         # of each other, the KL divergence formula breaks down into summation of the KL
         # divergences for each parameter
         for layer in self.shared_layers:
-            kl_divergence += layer.kl_divergence()
+            kl_divergence = torch.add(kl_divergence, layer.kl_divergence())
 
-        kl_divergence += self.heads[head_idx].kl_divergence()
+        kl_divergence = torch.add(kl_divergence, self.heads[head_idx].kl_divergence())
 
         return kl_divergence
-
-    def _avg_log_likelihood(self, x, y, head):
-        predictions = self(x, head)
-
-        # Make mask to select probabilities associated with actual y values
-        mask = torch.zeros(predictions.size(), dtype=torch.uint8)
-        for i in range(predictions.size()[0]):
-            mask[i][int(y[i].item())] = 1
-
-        # Select probabilities, log and sum them
-        y_preds = torch.masked_select(predictions.cpu(), mask)
-        return torch.mean(torch.log(y_preds + self.epsilon))
 
 
 class GenerativeVCL(VCL):
@@ -224,5 +220,5 @@ class GenerativeVCL(VCL):
     def _kl_divergence(self, head_idx) -> float:
         pass
 
-    def _avg_log_likelihood(self, x, y, head_idx) -> float:
+    def _log_likelihood(self, x, y, head_idx) -> float:
         pass
