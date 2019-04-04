@@ -60,7 +60,10 @@ class DiscriminativeVCL(nn.Module):
         return self
 
     def forward(self, x, head):
-        """ Forward pass of the model on an input. """
+        """ Forward pass of the model on an input.
+            Head can be an integer, in which case it is used for all x, or a
+            tensor of the same dimension as the number of points of x.
+        """
         # sample layer parameters from posterior distribution
         (w_means, w_log_vars), (b_means, b_log_vars) = self.posterior
         (head_w_means, head_w_log_vars), (head_b_means, head_b_log_vars) = self.head_posterior
@@ -71,8 +74,17 @@ class DiscriminativeVCL(nn.Module):
         for weight, bias in sampled_layers:
             x = F.relu(x @ weight + bias)
 
-        head_weight, head_bias = list(sampled_head_layers)[head]
-        x = x @ head_weight + head_bias
+        if isinstance(head, int):
+            # All data points are from one head
+            head_weight, head_bias = list(sampled_head_layers)[head]
+            x = x @ head_weight + head_bias
+        else:
+            # Data points are from multiple heads, calcule all out tensors then select
+            assert isinstance(head, torch.Tensor)
+            xs = torch.Tensor(
+                    [x @ head_weight + head_bias for head_weight, head_bias in sampled_head_layers]
+                )
+            x = xs[head, torch.arange(x.shape[1])]
 
         return x
 

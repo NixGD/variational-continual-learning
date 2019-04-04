@@ -42,25 +42,26 @@ class Coreset():
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         optimizer.load_state_dict(old_optimizer.state_dict())
 
-        for task_idx in range(up_to_task+1):
-            print('CORESET TASK', task_idx)
+        index_loader = data.DataLoader(range(len(self.coreset)), batch_size, shuffle=True)
+        print('CORESET TRAIN')
+        for _ in tqdm(range(epochs), 'Epochs: '):
+            for indexes in index_loader:
+                optimizer.zero_grad()
+                x, y_true = self.coreset[indexes]
+                x = x.to(device)
+                y_true = y_true.to(device)
 
-            head = task_idx if multiheaded else 0
-            task_data = task_subset(self.coreset, self.coreset_task_ids, task_idx)
-            train_loader = data.DataLoader(task_data, batch_size)
-            for _ in tqdm(range(epochs), 'Epochs: '):
-                for batch in train_loader:
-                    optimizer.zero_grad()
-                    x, y_true = batch
-                    x = x.to(device)
-                    y_true = y_true.to(device)
+                tasks = self.coreset_task_ids[indexes].long()
 
-                    if y_transform is not None:
-                        y_true = y_transform(y_true, task_idx)
+                if y_transform is not None:
+                    y_true = torch.cat([y_transform(y_true, t) for t in tasks])
 
-                    loss = model.vcl_loss(x, y_true, head, len(task_data))
-                    loss.backward()
-                    optimizer.step()
+                head = tasks if multiheaded else 0
+                head = head.to(device)
+
+                loss = model.vcl_loss(x, y_true, head, len(self.coreset))
+                loss.backward()
+                optimizer.step()
 
         return model
 
