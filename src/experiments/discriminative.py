@@ -33,7 +33,7 @@ def permuted_mnist():
     n_tasks = 10
     multiheaded = False
     coreset_size = 200
-    epochs = 100
+    epochs = 1
     batch_size = 256
 
     # flattening and permutation used for each task
@@ -42,9 +42,11 @@ def permuted_mnist():
     # create model, single-headed in permuted MNIST experiment
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
-        n_heads=(n_tasks if multiheaded else 1),
-        shared_h_dims=(layer_width, layer_width))
+        n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
+        initial_posterior_variance=INITIAL_POSTERIOR_VAR
+    )
 
+    optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
     mnist_train = ConcatDataset(
@@ -69,7 +71,7 @@ def permuted_mnist():
                                       epochs=epochs, batch_size=batch_size,
                                       device=device, lr=LR,
                                       multiheaded=multiheaded,
-                                      task_ids=train_task_ids)
+                                      task_ids=train_task_ids, optimizer=optimizer)
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(n_tasks):
@@ -78,7 +80,8 @@ def permuted_mnist():
             test_data=mnist_test, test_task_ids=test_task_ids, task_idx=task,
             coreset=coreset, epochs=epochs, batch_size=batch_size,
             device=device, lr=LR, save_as="disc_p_mnist",
-            multiheaded=multiheaded, summary_writer=writer
+            multiheaded=multiheaded, summary_writer=writer,
+            optimizer=optimizer
         )
 
     writer.close()
@@ -91,7 +94,6 @@ def split_mnist():
     """
     n_classes = 2
     layer_width = 256
-    n_hidden_layers = 2
     n_tasks = 5
     multiheaded = True
     coreset_size = 40
@@ -104,16 +106,13 @@ def split_mnist():
     mnist_train = MNIST(root='data', train=True, download=True, transform=transform)
     mnist_test = MNIST(root='data/', train=False, download=True, transform=transform)
 
-    # model = OriginalVCL(in_size=MNIST_FLATTENED_DIM, out_size=n_classes, layer_width=layer_width,
-    #                     n_hidden_layers=n_hidden_layers, n_heads=n_tasks, initial_posterior_var=INITIAL_POSTERIOR_VAR)
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
         initial_posterior_variance=INITIAL_POSTERIOR_VAR
     )
-    optimizer = optim.Adam(model.parameters(), lr=LR)
-    # model = MultiHeadMLP(MNIST_FLATTENED_DIM, n_classes, n_tasks)
 
+    optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
     label_to_task_mapping = {
