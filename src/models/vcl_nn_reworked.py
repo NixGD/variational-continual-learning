@@ -92,7 +92,7 @@ class DiscriminativeVCL(VCL):
 
         return x_out
 
-    def vcl_loss(self, x, y, task_size, head_idx=0):
+    def vcl_loss(self, x, y, head_idx, task_size):
         kl = self._kl_divergence(head_idx) / task_size
         return kl + torch.nn.NLLLoss()(self(x, head_idx), y)
 
