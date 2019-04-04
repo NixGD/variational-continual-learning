@@ -42,14 +42,17 @@ class Coreset():
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         optimizer.load_state_dict(old_optimizer.state_dict())
 
-        for task_idx in range(up_to_task+1):
-            print('CORESET TASK', task_idx)
+        task_subsets  = [ task_subset(self.coreset, self.coreset_task_ids, task_idx)
+                          for task_idx in range(up_to_task+1) ]
+        train_loaders = [ data.DataLoader(task_data, batch_size)
+                          for task_data in task_subsets ]
 
-            head = task_idx if multiheaded else 0
-            task_data = task_subset(self.coreset, self.coreset_task_ids, task_idx)
-            train_loader = data.DataLoader(task_data, batch_size)
-            for _ in tqdm(range(epochs), 'Epochs: '):
-                for batch in train_loader:
+        print('CORESET TRAIN')
+        for _ in tqdm(range(epochs), 'Epochs: '):
+            for task_idx in torch.randperm(up_to_task+1):
+                head = task_idx if multiheaded else 0
+
+                for batch in train_loaders[task_idx]:
                     optimizer.zero_grad()
                     x, y_true = batch
                     x = x.to(device)
@@ -58,8 +61,7 @@ class Coreset():
                     if y_transform is not None:
                         y_true = y_transform(y_true, task_idx)
 
-                    loss = model.vcl_loss(x, y_true, len(task_data), head)
-                    # loss = model.vcl_loss(x, y_true, head, len(task_data))
+                    loss = model.vcl_loss(x, y_true, head, len(self.coreset))
                     loss.backward()
                     optimizer.step()
 
