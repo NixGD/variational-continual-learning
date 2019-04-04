@@ -46,7 +46,7 @@ class DiscriminativeVCL(VCL):
     """
 
     def __init__(self, x_dim, h_dim, y_dim, n_heads=1, shared_h_dims=(100, 100),
-                 initial_posterior_variance=1e-6, mc_sampling_n=10):
+                 initial_posterior_variance=1e-6, mc_sampling_n=10, device='cpu'):
         super().__init__()
         # check for bad parameters
         if n_heads < 1:
@@ -58,6 +58,7 @@ class DiscriminativeVCL(VCL):
         self.n_heads = n_heads
         self.ipv = initial_posterior_variance
         self.mc_sampling_n = mc_sampling_n
+        self.device = device
 
         shared_dims = [x_dim] + list(shared_h_dims) + [h_dim]
 
@@ -73,7 +74,7 @@ class DiscriminativeVCL(VCL):
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x, head_idx=0, sample_parameters=True):
-        x_out = torch.zeros(size=(x.size()[0], self.y_dim))
+        x_out = torch.zeros(size=(x.size()[0], self.y_dim)).to(self.device)
 
         # repeat forward pass n times to sample layer params multiple times
         for _ in range(self.mc_sampling_n if sample_parameters else 1):

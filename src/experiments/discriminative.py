@@ -43,7 +43,7 @@ def permuted_mnist():
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
-        initial_posterior_variance=INITIAL_POSTERIOR_VAR
+        initial_posterior_variance=INITIAL_POSTERIOR_VAR, device=device
     ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=LR)
@@ -109,7 +109,7 @@ def split_mnist():
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
-        initial_posterior_variance=INITIAL_POSTERIOR_VAR
+        initial_posterior_variance=INITIAL_POSTERIOR_VAR, device=device
     ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=LR)
@@ -177,6 +177,7 @@ def split_not_mnist():
     model = DiscriminativeVCL(
         x_dim=MNIST_FLATTENED_DIM, h_dim=layer_width, y_dim=n_classes,
         n_heads=(n_tasks if multiheaded else 1), shared_h_dims=(layer_width, layer_width),
+        initial_posterior_variance=INITIAL_POSTERIOR_VAR, device=device
     ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
