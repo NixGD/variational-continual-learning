@@ -1,75 +1,132 @@
+import os
+import datetime
 import torch
 from torch.optim import Adam
-from torch.utils.data import DataLoader
+from torchvision.transforms import Compose
 from torchvision.datasets import MNIST
-from models.vcl_nn_reworked import DiscriminativeVCL, GenerativeVCL
-from util.transforms import Flatten
-from util.outputs import write_as_json, save_model
-from tqdm import tqdm
+from models.vcl_nn_reworked import GenerativeVCL
+from models.coreset import RandomCoreset
+from util.datasets import NOTMNIST
+from util.transforms import Flatten, Scale
+from util.experiment_utils import run_point_estimate_initialisation, run_task
+from tensorboardX import SummaryWriter
 
-N_TASKS = 10
+
 MNIST_FLATTENED_DIM = 28 * 28
-Z_DIM = 50
-H_DIM = 500
-HIDDEN_WIDTH = 500
-EPOCHS = 100
-BATCH_SIZE = 256
 LR = 0.001
+INITIAL_POSTERIOR_VAR = 1e-3
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print("Running on device", device)
 
 
 def generate_mnist():
     """
-            Runs the 'Split MNIST' experiment from the VCL paper, in which each task
-            is a binary classification task carried out on a subset of the MNIST dataset.
+        Runs the 'Split MNIST' experiment from the VCL paper, in which each task is
+        a binary classification task carried out on a subset of the MNIST dataset.
         """
+    z_dim = 50
+    h_dim = 500
+    layer_width = 500
+    n_tasks = 10
+    multiheaded = True
+    coreset_size = 40
+    epochs = 120
+    batch_size = 50000
+
+    transform = Compose([Flatten(), Scale()])
+
     # download dataset
-    mnist_train = MNIST(root='../data/', train=True, download=True, transform=Flatten())
-    mnist_test = MNIST(root='../data/', train=False, download=True, transform=Flatten())
+    mnist_train = MNIST(root='data', train=True, download=True, transform=transform)
+    mnist_test = MNIST(root='data/', train=False, download=True, transform=transform)
 
-    # create multi-headed VCL decoder (task-specific encoders created later)
-    decoder = GenerativeVCL(z_dim=Z_DIM, h_dim=H_DIM, x_dim=MNIST_FLATTENED_DIM, n_heads=10, n_hidden_layers=(1, 1),
-                            hidden_dims=(500, 500))
-    optimizer = Adam(decoder.parameters(), lr=LR)
+    model = GenerativeVCL(z_dim=z_dim, h_dim=h_dim, x_dim=MNIST_FLATTENED_DIM, n_heads=n_tasks,
+                          encoder_h_dims=(layer_width, layer_width), decoder_head_h_dims=(layer_width,),
+                          decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
+                          mc_sampling_n=10, device=device).to(device)
 
-    # each task is a generative task for one specific digit
-    for task in range(N_TASKS):
-        print('TASK ' + str(task) + ':')
-        train_loader = DataLoader(mnist_train, BATCH_SIZE)
+    optimizer = Adam(model.parameters(), lr=LR)
+    coreset = RandomCoreset(size=coreset_size)
 
-        # every task has a task-specific encoder, symmetric to the decoder todo make symmetric
-        encoder = DiscriminativeVCL(x_dim=MNIST_FLATTENED_DIM, h_dim=Z_DIM, layer_width=HIDDEN_WIDTH, n_hidden_layers=3)
-        optimizer.add_param_group(encoder.parameters())
+    if isinstance(mnist_train[0][1], int):
+        train_task_ids = torch.Tensor([y for _, y in mnist_train])
+        test_task_ids = torch.Tensor([y for _, y in mnist_test])
+    elif isinstance(mnist_train[0][1], torch.Tensor):
+        train_task_ids = torch.Tensor([y.item() for _, y in mnist_train])
+        test_task_ids = torch.Tensor([y.item() for _, y in mnist_test])
 
-        for _ in tqdm(range(EPOCHS), 'Epochs: '):
-            for batch in train_loader:
-                optimizer.zero_grad()
-                x, _ = batch
+    summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    writer = SummaryWriter(summary_logdir)
 
-                z = encoder(x)
-                x = decoder(z)
+    # each task is a binary classification task for a different pair of digits
 
-                loss = decoder.loss(x, encoder)
-                loss.backward()
-                optimizer.step()
+    run_point_estimate_initialisation(model=model, data=mnist_train,
+                                      epochs=epochs, batch_size=batch_size,
+                                      device=device, multiheaded=multiheaded,
+                                      lr=LR, task_ids=train_task_ids,
+                                      optimizer=optimizer)
 
-        optimizer.param_groups.remove(-1)
-    # test
-    task_accuracies = []
-    for task in tqdm(range(N_TASKS), 'Testing task: '):
-        test_loader = DataLoader(mnist_test, batch_size=1)
-        correct = 0
-        total = 0
+    for task_idx in range(n_tasks):
+        run_task(
+            model=model, train_data=mnist_train, train_task_ids=train_task_ids,
+            test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
+            task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
+            save_as="disc_s_mnist", device=device, multiheaded=multiheaded,
+            summary_writer=writer, optimizer=optimizer
+        )
 
-        for sample_idx, sample in enumerate(test_loader, 1):
-            # binarize labels - 1s where label is label_pair[1], 0 where it is label_pair[0]
-            x, _ = sample
-            # todo
-
-        task_accuracies.append(correct / total)
-
-    write_as_json('disc_s_mnist/accuracy.txt', task_accuracies)
-    save_model(model, 'disc_s_mnist/model.pth')
+    writer.close()
 
 
 def generate_not_mnist():
-    pass
+    z_dim = 50
+    h_dim = 500
+    layer_width = 500
+    n_tasks = 10
+    multiheaded = True
+    coreset_size = 40
+    epochs = 120
+    batch_size = 50000
+
+    transform = Compose([Flatten(), Scale()])
+
+    # download dataset
+    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=transform)
+    not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=transform)
+
+    model = GenerativeVCL(z_dim=z_dim, h_dim=h_dim, x_dim=MNIST_FLATTENED_DIM, n_heads=n_tasks,
+                          encoder_h_dims=(layer_width, layer_width), decoder_head_h_dims=(layer_width,),
+                          decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
+                          mc_sampling_n=10, device=device).to(device)
+
+    optimizer = Adam(model.parameters(), lr=LR)
+    coreset = RandomCoreset(size=coreset_size)
+
+    if isinstance(not_mnist_train[0][1], int):
+        train_task_ids = torch.Tensor([y for _, y in not_mnist_train])
+        test_task_ids = torch.Tensor([y for _, y in not_mnist_test])
+    elif isinstance(not_mnist_train[0][1], torch.Tensor):
+        train_task_ids = torch.Tensor([y.item() for _, y in not_mnist_train])
+        test_task_ids = torch.Tensor([y.item() for _, y in not_mnist_test])
+
+    summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    writer = SummaryWriter(summary_logdir)
+
+    # each task is a binary classification task for a different pair of digits
+
+    run_point_estimate_initialisation(model=model, data=not_mnist_train,
+                                      epochs=epochs, batch_size=batch_size,
+                                      device=device, multiheaded=multiheaded,
+                                      lr=LR, task_ids=train_task_ids,
+                                      optimizer=optimizer)
+
+    for task_idx in range(n_tasks):
+        run_task(
+            model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
+            test_data=not_mnist_test, test_task_ids=test_task_ids, coreset=coreset,
+            task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
+            save_as="disc_s_mnist", device=device, multiheaded=multiheaded,
+            summary_writer=writer, optimizer=optimizer
+        )
+
+    writer.close()
