@@ -51,3 +51,30 @@ class MultiHeadMLP(torch.nn.Module):
 
     def reset_for_new_task(self):
         pass
+
+
+class Encoder(torch.nn.Module):
+    def __init__(self, x_dim, z_dim, h_dims=(500,)):
+        super().__init__()
+
+        self.x_dim = x_dim
+        self.z_dim = z_dim
+        self.out_dim = 2  # output parameters for a normal
+
+        layer_dims = [x_dim] + list(h_dims) + [z_dim]
+
+        # list of layers in shared network
+        self.layers = torch.nn.ModuleList([
+            torch.nn.Linear(layer_dims[i], layer_dims[i + 1]) for i in range(len(layer_dims) - 1)
+        ])
+
+    def forward(self, x, head_idx):
+        z = x
+        for layer in self.layers[:-1]:
+            z = F.relu(layer(z))
+        z = self.layers[-1](z)
+
+        return z
+
+    def encode(self, x, head_idx):
+        pass
