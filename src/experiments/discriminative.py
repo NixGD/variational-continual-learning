@@ -6,7 +6,7 @@ from torchvision.transforms import Compose
 from torch.utils.data import ConcatDataset
 from models.vcl_nn_reworked import DiscriminativeVCL
 from models.vcl_nn import DiscriminativeVCL as OriginalVCL
-from models.simple import MultiHeadMLP
+from models.deep_models import MultiHeadMLP
 from models.coreset import RandomCoreset
 from util.experiment_utils import run_point_estimate_initialisation, run_task
 from util.transforms import Flatten, Scale, Permute
@@ -46,7 +46,7 @@ def permuted_mnist():
         initial_posterior_variance=INITIAL_POSTERIOR_VAR, device=device
     ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=LR)
+    # optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
     mnist_train = ConcatDataset(
@@ -71,7 +71,9 @@ def permuted_mnist():
                                       epochs=epochs, batch_size=batch_size,
                                       device=device, lr=LR,
                                       multiheaded=multiheaded,
-                                      task_ids=train_task_ids, optimizer=optimizer)
+                                      task_ids=train_task_ids,
+                                      # optimizer=optimizer
+                                      )
 
     # each task is classification of MNIST images with permuted pixels
     for task in range(n_tasks):
@@ -81,7 +83,7 @@ def permuted_mnist():
             coreset=coreset, epochs=epochs, batch_size=batch_size,
             device=device, lr=LR, save_as="disc_p_mnist",
             multiheaded=multiheaded, summary_writer=writer,
-            optimizer=optimizer
+            # optimizer=optimizer
         )
 
     writer.close()
