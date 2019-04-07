@@ -16,7 +16,7 @@ MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
 INITIAL_POSTERIOR_VAR = 1e-3
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 print("Running on device", device)
 
 def permuted_mnist():
@@ -29,7 +29,7 @@ def permuted_mnist():
     N_HIDDEN_LAYERS = 2
     N_TASKS = 10
     MULTIHEADED = False
-    CORESET_SIZE = 200
+    CORESET_SIZE = 0
     EPOCHS = 100
     BATCH_SIZE = 256
 
@@ -91,7 +91,7 @@ def split_mnist():
     N_HIDDEN_LAYERS = 2
     N_TASKS = 5
     MULTIHEADED = True
-    CORESET_SIZE = 40
+    CORESET_SIZE = 0
     EPOCHS = 120
     BATCH_SIZE = 50000
 
