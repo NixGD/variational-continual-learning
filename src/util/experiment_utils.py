@@ -73,7 +73,11 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
                                              device, y_transform=y_transform,
                                              multiheaded=multiheaded)
+
     task_accuracies = []
+    tot_right = 0
+    tot_tested = 0
+
     for test_task_idx in range(task_idx+1):
         head = test_task_idx if multiheaded else 0
 
@@ -93,12 +97,20 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
         print("After task {} perfomance on task {} is {}"
                 .format(task_idx, test_task_idx, acc))
 
+        tot_right += acc * len(task_data)
+        tot_tested += len(task_data)
         task_accuracies.append(acc)
+
+
+    mean_accuracy = tot_right / tot_tested
+    print("Mean accuracy:", mean_accuracy)
 
     if summary_writer is not None:
         task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
         summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
         summary_writer.add_scalar("mean_posterior_variance", model._mean_posterior_variance(), task_idx + 1)
+        summary_writer.add_scalar("mean_accuracy",  mean_accuracy, task_idx + 1)
+
 
     write_as_json(save_as + '/accuracy.txt', task_accuracies)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')
