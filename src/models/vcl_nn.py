@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from util.operations import concatenate_flattened
-from layers.distributional import DistributionalLinear
+from layers.variational import DistributionalLinear
 import math
 
 TRAIN_NUM_SAMPLES = 10
