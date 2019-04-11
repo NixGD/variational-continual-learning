@@ -29,7 +29,7 @@ def permuted_mnist():
     N_HIDDEN_LAYERS = 2
     N_TASKS = 10
     MULTIHEADED = False
-    CORESET_SIZE = 0
+    CORESET_SIZE = 200
     EPOCHS = 100
     BATCH_SIZE = 256
 
@@ -91,7 +91,7 @@ def split_mnist():
     N_HIDDEN_LAYERS = 2
     N_TASKS = 5
     MULTIHEADED = True
-    CORESET_SIZE = 0
+    CORESET_SIZE = 40
     EPOCHS = 120
     BATCH_SIZE = 50000
 
