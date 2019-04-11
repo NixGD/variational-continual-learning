@@ -1,16 +1,15 @@
 import os
-import datetime
+from datetime import datetime
 import torch
 from torch.optim import Adam
 from torchvision.transforms import Compose
 from torchvision.datasets import MNIST
-from models.vcl_nn_reworked import GenerativeVCL
+from models.contrib import GenerativeVCL
 from models.coreset import RandomCoreset
 from util.datasets import NOTMNIST
 from util.transforms import Flatten, Scale
-from util.experiment_utils import run_point_estimate_initialisation, run_task
+from util.experiment_utils import run_generative_point_estimate_initialisation, run_generative_task
 from tensorboardX import SummaryWriter
-
 
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
@@ -22,9 +21,9 @@ print("Running on device", device)
 
 def generate_mnist():
     """
-        Runs the 'Split MNIST' experiment from the VCL paper, in which each task is
-        a binary classification task carried out on a subset of the MNIST dataset.
-        """
+        Runs the generative MNIST experiment from the VCL paper, in which each task is
+        a generative task for one of the digits in the MNIST dataset.
+    """
     z_dim = 50
     h_dim = 500
     layer_width = 500
@@ -48,6 +47,7 @@ def generate_mnist():
     optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
+    # each label is its own task, so no need to define a dictionary like in the discriminative experiments
     if isinstance(mnist_train[0][1], int):
         train_task_ids = torch.Tensor([y for _, y in mnist_train])
         test_task_ids = torch.Tensor([y for _, y in mnist_test])
@@ -58,16 +58,15 @@ def generate_mnist():
     summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
 
-    # each task is a binary classification task for a different pair of digits
-
-    run_point_estimate_initialisation(model=model, data=mnist_train,
-                                      epochs=epochs, batch_size=batch_size,
-                                      device=device, multiheaded=multiheaded,
-                                      lr=LR, task_ids=train_task_ids,
-                                      optimizer=optimizer)
+    # point estimate initialization is not done in the generative experiments
+    # run_generative_point_estimate_initialisation(model=model, data=mnist_train,
+    #                                              epochs=epochs, batch_size=batch_size,
+    #                                              device=device, multiheaded=multiheaded,
+    #                                              lr=LR, task_ids=train_task_ids,
+    #                                              optimizer=optimizer)
 
     for task_idx in range(n_tasks):
-        run_task(
+        run_generative_task(
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
@@ -79,6 +78,10 @@ def generate_mnist():
 
 
 def generate_not_mnist():
+    """
+        Runs the generative MNIST experiment from the VCL paper, in which each task is
+        a generative task for one of the digits in the MNIST dataset.
+    """
     z_dim = 50
     h_dim = 500
     layer_width = 500
@@ -102,6 +105,7 @@ def generate_not_mnist():
     optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
+    # each label is its own task, so no need to define a dictionary like in the discriminative experiments
     if isinstance(not_mnist_train[0][1], int):
         train_task_ids = torch.Tensor([y for _, y in not_mnist_train])
         test_task_ids = torch.Tensor([y for _, y in not_mnist_test])
@@ -112,16 +116,15 @@ def generate_not_mnist():
     summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
 
-    # each task is a binary classification task for a different pair of digits
-
-    run_point_estimate_initialisation(model=model, data=not_mnist_train,
-                                      epochs=epochs, batch_size=batch_size,
-                                      device=device, multiheaded=multiheaded,
-                                      lr=LR, task_ids=train_task_ids,
-                                      optimizer=optimizer)
+    # point estimate initialization is not done in the generative experiments
+    # run_generative_point_estimate_initialisation(model=model, data=not_mnist_train,
+    #                                              epochs=epochs, batch_size=batch_size,
+    #                                              device=device, multiheaded=multiheaded,
+    #                                              lr=LR, task_ids=train_task_ids,
+    #                                              optimizer=optimizer)
 
     for task_idx in range(n_tasks):
-        run_task(
+        run_generative_task(
             model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
             test_data=not_mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,

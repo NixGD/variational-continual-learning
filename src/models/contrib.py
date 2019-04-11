@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.variational import VariationalLayer, MeanFieldGaussianLinear
 from models.deep_models import Encoder
+from util.operations import kl_divergence
 
 EPSILON = 1e-20  # Small value to avoid divide-by-zero and log(zero) problems
 
@@ -187,7 +188,7 @@ class GenerativeVCL(VCL):
         self.encoder = Encoder(x_dim, 2, encoder_h_dims)
         # list of heads, each with a list of layers
         self.decoder_heads = nn.ModuleList([
-            [MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv) for i in range(len(head_dims) - 1)]
+            nn.ModuleList([MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv) for i in range(len(head_dims) - 1)])
             for _ in
             range(n_heads)
         ])
@@ -199,28 +200,31 @@ class GenerativeVCL(VCL):
 
     def forward(self, x, head_idx, sample_parameters=True):
         """ Forward pass for the entire VAE, passing through both the encoder and the decoder. """
-        z_posterior_mean, z_posterior_variance = self.forward_encoder_only(x)
-        z = torch.normal(z_posterior_mean, z_posterior_variance)
-        x_out = self.forward_decoder_only(z, head_idx)
+        raise NotImplementedError()
+        # means_and_vars = self.forward_encoder_only(x, head_idx)
+        # z = torch.normal(means_and_vars[:, 0], torch.exp(means_and_vars[:, 1]))
+        # x_out = self.forward_decoder_only(z, head_idx)
+        #
+        # return x_out
 
-        return x_out
-
-    def forward_encoder_only(self, x):
+    def forward_encoder_only(self, x, head_idx):
         """ Forward pass for the encoder. Takes data as input, and returns the mean and variance
         of the log-normal posterior latent distribution p(z | x), for each data point. This
         distribution is used to sample the actual latent representation z for the data point x. """
-        params = self.encoder(x)
-        return params[0], params[1]
+        return self.encoder(x, head_idx)
 
     def forward_decoder_only(self, z, head_idx, sample_parameters=True):
         """ Forward pass for the decoder. Takes a latent representation and produces a reconstruction
         of the original data point that z represents. """
-        x_out = torch.zeros(size=(z.size()[0], self.y_dim)).to(self.device)
+        x_out = torch.zeros(size=(z.size()[0], self.x_dim)).to(self.device)
 
         # repeat forward pass n times to sample layer params multiple times
         for _ in range(self.mc_sampling_n if sample_parameters else 1):
             h = z
-            for layer in self.decoder_heads[head_idx] + self.decoder_shared:
+            for layer in self.decoder_heads[head_idx]:
+                h = F.relu(layer(h))
+
+            for layer in self.decoder_shared:
                 h = F.relu(layer(h))
 
             x_out.add_(h)
@@ -230,7 +234,9 @@ class GenerativeVCL(VCL):
 
     def vae_loss(self, x, task_idx, task_size):
         """ Loss implementing the full variational lower bound from page 5 of the paper """
-        return -self._elbo(x, task_idx) + self._kl_divergence(task_idx) / task_size
+        elbo = self._elbo(x, task_idx)
+        kl = self._kl_divergence(task_idx) / task_size
+        return - elbo + kl
 
     def generate(self, batch_size, task_idx):
         """ Sample new images x from p(x|z)p(z), where z is a gaussian noise distribution. """
@@ -253,18 +259,21 @@ class GenerativeVCL(VCL):
 
     def _elbo(self, x, head_idx, sample_n=1):
         """ Computes the variational lower bound """
-        z_posterior_mean, z_posterior_log_variance = self.forward_encoder_only(x)
+        z_params = self.forward_encoder_only(x, head_idx)
+        kl = kl_divergence(z_params[:, 0], z_params[:, 1])
 
-        log_likelihood = torch.zeros(size=(x.size()[0], x.size()[1])).to(self.device)
+        z_means = torch.stack(tuple([z_params[:, 0] for _ in range(self.z_dim)]), dim=1)
+        z_variances = torch.stack(tuple([torch.exp(z_params[:, 0]) for _ in range(self.z_dim)]), dim=1)
+
+        log_likelihood = torch.zeros(size=(x.size()[0],)).to(self.device)
         for _ in range(sample_n):
-            z = torch.normal(z_posterior_mean, torch.exp(z_posterior_log_variance))
+            z = torch.normal(z_means, z_variances)
             x_reconstructed = self.forward_decoder_only(z, head_idx)
             # Bernoulli likelihood of data
             log_likelihood.add_(self._bernoulli_log_likelihood(x, x_reconstructed))
-        log_likelihood.div_(sample_n)
+        log_likelihood = log_likelihood.div_(sample_n)
 
-        # fixme this isn't right, for now just returning log likelihood
-        return log_likelihood
+        return torch.mean(log_likelihood - kl)
 
     def _kl_divergence(self, head_idx) -> torch.Tensor:
         """ KL divergence of the VCL decoder's posterior distribution from its previous posterior. """
@@ -272,13 +281,20 @@ class GenerativeVCL(VCL):
 
         # kl divergence is equal to sum of parameter-wise divergences since
         # distribution is diagonal multivariate normal (parameters are independent)
-        for layer in self.decoder_shared + self.decoder_heads[head_idx]:
+        for layer in self.decoder_shared:
+            kl_divergence = torch.add(kl_divergence, layer.kl_divergence())
+
+        for layer in self.decoder_heads[head_idx]:
             kl_divergence = torch.add(kl_divergence, layer.kl_divergence())
 
         return kl_divergence
 
     def _bernoulli_log_likelihood(self, x, p) -> torch.Tensor:
-        return torch.add(
-            torch.mul(torch.log(p + self.epsilon), x),
-            torch.mul(torch.log(1 - p + self.epsilon), 1 - x)
+        # since log probability, summing the log likelihood of each pixel gives
+        # the log likelihood of each data point
+        return torch.sum(
+            torch.add(
+                torch.mul(torch.log(p + self.epsilon), x),
+                torch.mul(torch.log(1 - p + self.epsilon), 1 - x)
+            ), 1
         )
