@@ -5,6 +5,13 @@
     Date last modified: November 8, 2017
     Credits: moskomule (https://discuss.pytorch.org/t/print-autograd-graph/692/15)
 """
+
+# DISCLAIMER
+# This code was not written by members of the AML project group, and neither is there
+# any intention to make it appear as if though it had been. The code is open source
+# and free to use. For detailed credits, view the link in the documentation comment.
+
+
 from graphviz import Digraph
 import torch
 from torch.autograd import Variable

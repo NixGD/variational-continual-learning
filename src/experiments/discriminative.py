@@ -1,4 +1,5 @@
 import torch
+import torch.optim as optim
 import numpy as np
 from torchvision.datasets import MNIST
 from torchvision.transforms import Compose
@@ -18,6 +19,7 @@ INITIAL_POSTERIOR_VAR = 1e-3
 
 device = torch.device("cpu")
 print("Running on device", device)
+
 
 def permuted_mnist():
     """
@@ -80,6 +82,7 @@ def permuted_mnist():
         )
 
     writer.close()
+
 
 def split_mnist():
     """
@@ -147,6 +150,7 @@ def split_mnist():
         )
 
     writer.close()
+
 
 def split_not_mnist():
     """
