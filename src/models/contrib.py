@@ -1,3 +1,13 @@
+"""
+This module contains the less thoroughly tested implementations of VCL models.
+
+In particular, the models in this module are defined in a different manner to the main
+models in the models.vcl_nn module. The models in this module are defined in terms of
+bayesian layers from the layers.variational module, which abstract the details of
+online variational inference. This approach is in line with the standard style in which
+PyTorch models are defined.
+"""
+
 from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
@@ -9,6 +19,7 @@ EPSILON = 1e-20  # Small value to avoid divide-by-zero and log(zero) problems
 
 
 class VCL(nn.Module, ABC):
+    """ Base class for all VCL models """
     def __init__(self, epsilon=EPSILON):
         super().__init__()
         self.epsilon = epsilon
