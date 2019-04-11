@@ -10,6 +10,21 @@ from torch._jit_internal import weak_module, weak_script_method
 
 @weak_module
 class VariationalLayer(torch.nn.Module, ABC):
+    """
+    Base class for any type of neural network layer that uses variational inference. The
+    defining aspect of such a layer are:
+
+    1. The PyTorch forward() method should allow the parametric specification of whether
+    the forward pass should be carried out with parameters sampled from the posterior
+    parameter distribution, or using the distribution parameters directly as if though
+    they were standard neural network parameters.
+
+    2. Must provide a method for resetting the parameter distributions for the next task
+    in the online (multi-task) variational inference setting.
+
+    3. Must provide a method for computing the KL divergence between the layer's parameter
+    posterior distribution and parameter prior distribution.
+    """
     def __init__(self, epsilon=1e-8):
         super().__init__()
         self.epsilon = epsilon
