@@ -2,12 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from util.operations import concatenate_flattened
-from layers.variational import DistributionalLinear
 import math
+
 
 TRAIN_NUM_SAMPLES = 10
 TEST_NUM_SAMPLES = 50
 EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
+
 
 class DiscriminativeVCL(nn.Module):
     """
@@ -281,42 +282,3 @@ class DiscriminativeVCL(nn.Module):
         posterior_log_vars = torch.cat([torch.reshape(t, (-1,)) for t in posterior_w_log_vars] + posterior_b_log_vars)
         posterior_vars     = torch.exp(posterior_log_vars)
         return torch.mean(posterior_vars).item()
-
-class GenerativeVCL(nn.Module):
-    """
-    A Bayesian neural network which is updated using variational inference
-    methods, and which is multi-headed at the input end. Suitable for
-    continual learning of generative tasks.
-    """
-
-    def __init__(self, z_dim, h_dim, x_dim, n_heads, n_hidden_layers=(1, 1), hidden_dims=(500, 500)):
-        super().__init__()
-        # dimensions
-        self.z_dim = z_dim
-        self.h_dim = h_dim
-        self.x_dim = x_dim
-        self.n_hidden_layers = n_hidden_layers
-        self.hidden_widths = hidden_dims
-        # layers in task-specific input heads
-        self.heads = [{
-            'head_linear_1': DistributionalLinear(z_dim, hidden_dims[0]),
-            'head_linear_2': DistributionalLinear(hidden_dims[1], h_dim)
-        } for _ in range(n_heads)]
-        # layers in shared part of network
-        self.shared_linear_1 = DistributionalLinear(h_dim, hidden_dims[1])
-        self.shared_linear_2 = DistributionalLinear(hidden_dims[1], x_dim)
-
-    def forward(self, x, head_idx):
-        head_linear_1 = self.heads[head_idx]['head_linear_1']
-        head_linear_2 = self.heads[head_idx]['head_linear_2']
-
-        x = F.relu(head_linear_1(x))
-        x = F.relu(head_linear_2(x))
-        x = F.relu(self.shared_linear_1(x))
-        x = F.relu(self.shared_linear_2(x))
-
-        return x
-
-    def loss(self):
-        # todo
-        pass
