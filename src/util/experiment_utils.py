@@ -117,7 +117,7 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     model.reset_for_new_task(head)
 
     # train using coreset
-    model_cs_trained = coreset.coreset_train_generative(model, optimizer, task_idx, epochs,
+    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
                                              device, y_transform=y_transform,
                                              multiheaded=multiheaded)
 
