@@ -181,7 +181,7 @@ def split_not_mnist():
     optimizer = optim.Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=CORESET_SIZE)
 
-    # todo: are the y classes integers?  Or characters?
+    # The y classes are integers 0-9.
     label_to_task_mapping = {
         0: 0, 1: 1,
         2: 2, 3: 3,
@@ -197,7 +197,8 @@ def split_not_mnist():
     writer = SummaryWriter(summary_logdir)
 
     # each task is a binary classification task for a different pair of digits
-    binarize_y = lambda y, task: (y == (2 * task + 1)).long()
+    # binarize_y(c, n) is 1 when c is is the nth digit - A for task 0, B for task 1
+    binarize_y = lambda y, task: (y == task).long()
 
     run_point_estimate_initialisation(model=model, data=not_mnist_train,
                                       epochs=EPOCHS, batch_size=BATCH_SIZE,
