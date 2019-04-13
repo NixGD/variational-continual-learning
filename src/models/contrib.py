@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.variational import VariationalLayer, MeanFieldGaussianLinear
 from models.deep_models import Encoder
-from util.operations import kl_divergence
+from util.operations import kl_divergence, bernoulli_log_likelihood
 
 EPSILON = 1e-20  # Small value to avoid divide-by-zero and log(zero) problems
 
@@ -200,12 +200,11 @@ class GenerativeVCL(VCL):
 
     def forward(self, x, head_idx, sample_parameters=True):
         """ Forward pass for the entire VAE, passing through both the encoder and the decoder. """
-        raise NotImplementedError()
-        # means_and_vars = self.forward_encoder_only(x, head_idx)
-        # z = torch.normal(means_and_vars[:, 0], torch.exp(means_and_vars[:, 1]))
-        # x_out = self.forward_decoder_only(z, head_idx)
-        #
-        # return x_out
+        means_and_vars = self.forward_encoder_only(x, head_idx)
+        z = torch.normal(means_and_vars[:, 0], torch.exp(means_and_vars[:, 1]))
+        x_out = self.forward_decoder_only(z, head_idx)
+
+        return x_out
 
     def forward_encoder_only(self, x, head_idx):
         """ Forward pass for the encoder. Takes data as input, and returns the mean and variance
@@ -270,7 +269,7 @@ class GenerativeVCL(VCL):
             z = torch.normal(z_means, z_variances)
             x_reconstructed = self.forward_decoder_only(z, head_idx)
             # Bernoulli likelihood of data
-            log_likelihood.add_(self._bernoulli_log_likelihood(x, x_reconstructed))
+            log_likelihood.add_(bernoulli_log_likelihood(x, x_reconstructed, self.epsilon))
         log_likelihood = log_likelihood.div_(sample_n)
 
         return torch.mean(log_likelihood - kl)
@@ -288,13 +287,3 @@ class GenerativeVCL(VCL):
             kl_divergence = torch.add(kl_divergence, layer.kl_divergence())
 
         return kl_divergence
-
-    def _bernoulli_log_likelihood(self, x, p) -> torch.Tensor:
-        # since log probability, summing the log likelihood of each pixel gives
-        # the log likelihood of each data point
-        return torch.sum(
-            torch.add(
-                torch.mul(torch.log(p + self.epsilon), x),
-                torch.mul(torch.log(1 - p + self.epsilon), 1 - x)
-            ), 1
-        )

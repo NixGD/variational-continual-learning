@@ -9,7 +9,9 @@ EXP_OPTIONS = {
     'disc_s_mnist': experiments.discriminative.split_mnist,
     'disc_s_n_mnist': experiments.discriminative.split_not_mnist,
     'gen_mnist': experiments.generative.generate_mnist,
-    'gen_not_mnist': experiments.generative.generate_not_mnist
+    'gen_not_mnist': experiments.generative.generate_not_mnist,
+    'gen_mnist_classifier': experiments.generative.train_mnist_classifier,
+    'gen_n_mnist_classifier': experiments.generative.train_not_mnist_classifier
 }
 
 

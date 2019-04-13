@@ -1,22 +1,113 @@
 import os
 from datetime import datetime
 import torch
+import torch.nn
 from torch.optim import Adam
-from torchvision.transforms import Compose
+from torch.utils.data import DataLoader
+from torchvision.transforms import Compose, ToTensor
 from torchvision.datasets import MNIST
 from models.contrib import GenerativeVCL
 from models.coreset import RandomCoreset
+from models.deep_models import Conv2DClassifier
 from util.datasets import NOTMNIST
 from util.transforms import Flatten, Scale
-from util.experiment_utils import run_generative_point_estimate_initialisation, run_generative_task
+from util.experiment_utils import run_generative_task
+from util.operations import class_accuracy
+from util.outputs import save_model, load_model
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
 INITIAL_POSTERIOR_VAR = 1e-3
+CLASSIFIER_EPOCHS = 100
+CLASSIFIER_BATCH_SIZE = 64
+MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
+NOTMNIST_CLASSIFIER_FILENAME = 'n_mnist_classifier.pth'
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Running on device", device)
+
+
+def train_mnist_classifier():
+    """
+    Train a non-VCL classifier for MNIST to be used to compute the 'classifier uncertainty'
+    evaluation metric in the generative tasks.
+    """
+    # image transforms and model
+    transforms = Compose([ToTensor(), Scale()])
+    model = Conv2DClassifier(1, 10).to(device)
+    loss_fn = torch.nn.NLLLoss()
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=LR)
+
+    # download dataset
+    mnist_train = MNIST(root="data", train=True, download=True, transform=transforms)
+    mnist_test = MNIST(root="data", train=False, download=True, transform=transforms)
+    train_loader = DataLoader(mnist_train, CLASSIFIER_BATCH_SIZE)
+    test_loader = DataLoader(mnist_test, len(mnist_test))
+
+    # train
+    for epoch in tqdm(range(CLASSIFIER_EPOCHS), 'Epochs'):
+        epoch_loss = 0
+        for batch in train_loader:
+            optimizer.zero_grad()
+            x, y = batch
+            x = x.to(device)
+            y = y.to(device)
+
+            predictions = model(x)
+            loss = loss_fn(predictions, y)
+            epoch_loss += len(x) * loss.item()
+
+            loss.backward()
+            optimizer.step()
+
+    # evaluate
+    x, y = test_loader[0]
+    accuracy = class_accuracy(model.predict(x), y)
+
+    print('Classifier accuracy: ' + str(accuracy))
+    save_model(model, MNIST_CLASSIFIER_FILENAME)
+
+
+def train_not_mnist_classifier():
+    """
+    Train a non-VCL classifier for not-MNIST to be used to compute the 'classifier uncertainty'
+    evaluation metric in the generative tasks.
+    """
+    # image transforms and model
+    transforms = Compose([ToTensor(), Scale()])
+    model = Conv2DClassifier(1, 10).to(device)
+    loss_fn = torch.nn.NLLLoss()
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=LR)
+
+    # download dataset
+    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=transforms)
+    not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=transforms)
+    train_loader = DataLoader(not_mnist_train, CLASSIFIER_BATCH_SIZE)
+    test_loader = DataLoader(not_mnist_test, len(not_mnist_test))
+
+    # train
+    for epoch in tqdm(range(CLASSIFIER_EPOCHS), 'Epochs'):
+        epoch_loss = 0
+        for batch in train_loader:
+            optimizer.zero_grad()
+            x, y = batch
+            x = x.to(device)
+            y = y.to(device)
+
+            loss = loss_fn(model(x), y)
+            epoch_loss += len(x) * loss.item()
+
+            loss.backward()
+            optimizer.step()
+
+    # evaluate
+    x, y = test_loader[0]
+    accuracy = class_accuracy(model.predict(x), y)
+
+    print('Classifier accuracy: ' + str(accuracy))
+    save_model(model, NOTMNIST_CLASSIFIER_FILENAME)
 
 
 def generate_mnist():
@@ -43,6 +134,7 @@ def generate_mnist():
                           encoder_h_dims=(layer_width, layer_width), decoder_head_h_dims=(layer_width,),
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
+    evaluation_classifier = load_model(MNIST_CLASSIFIER_FILENAME)
 
     optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
@@ -57,13 +149,6 @@ def generate_mnist():
 
     summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
-
-    # point estimate initialization is not done in the generative experiments
-    # run_generative_point_estimate_initialisation(model=model, data=mnist_train,
-    #                                              epochs=epochs, batch_size=batch_size,
-    #                                              device=device, multiheaded=multiheaded,
-    #                                              lr=LR, task_ids=train_task_ids,
-    #                                              optimizer=optimizer)
 
     for task_idx in range(n_tasks):
         run_generative_task(
@@ -101,6 +186,7 @@ def generate_not_mnist():
                           encoder_h_dims=(layer_width, layer_width), decoder_head_h_dims=(layer_width,),
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
+    evaluation_classifier = load_model(NOTMNIST_CLASSIFIER_FILENAME)
 
     optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
@@ -115,13 +201,6 @@ def generate_not_mnist():
 
     summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
-
-    # point estimate initialization is not done in the generative experiments
-    # run_generative_point_estimate_initialisation(model=model, data=not_mnist_train,
-    #                                              epochs=epochs, batch_size=batch_size,
-    #                                              device=device, multiheaded=multiheaded,
-    #                                              lr=LR, task_ids=train_task_ids,
-    #                                              optimizer=optimizer)
 
     for task_idx in range(n_tasks):
         run_generative_task(

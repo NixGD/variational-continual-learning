@@ -78,3 +78,29 @@ class Encoder(torch.nn.Module):
 
     def encode(self, x, head_idx):
         pass
+
+
+class Conv2DClassifier(torch.nn.Module):
+    """ A simple convolutional neural network for image classification """
+    def __init__(self, in_channels, n_classes):
+        super().__init__()
+        self.conv_1 = torch.nn.Conv2d(in_channels, 8, 8)      # on MNIST this outputs 8 * 21 * 21
+        self.conv_2 = torch.nn.Conv2d(8, 16, 3, 2)            # on MNIST this outputs 16 * 10 * 10
+        self.conv_3 = torch.nn.Conv2d(16, 32, 3, 2)           # on MNIST this outputs 32 * 4 * 4
+        self.linear_1 = torch.nn.Linear(32 * 4 * 4, 256)      # on MNIST maps 512 -> 256
+        self.linear_2 = torch.nn.Linear(256, n_classes)
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        h = F.relu(self.conv_1(x))
+        h = F.relu(self.conv_2(h))
+        h = F.relu(self.conv_3(h))
+        h = h.view(-1, 32 * 4 * 4)
+        h = F.relu(self.linear_1(h))
+        h = self.softmax(self.linear_2(h))
+        return h
+
+    def predict(self, x):
+        h = self(x)
+        h = torch.argmax(h, dim=1)
+        return h
