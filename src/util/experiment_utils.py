@@ -282,9 +282,9 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         y_true = torch.zeros(size=(batch_size, 10))
         y_true[:, task_idx] = 1
 
-        x_generated = model_cs_trained.generate(batch_size, head)
+        x_generated = model_cs_trained.generate(batch_size, head).view(batch_size, 1, 28, 28)
         y_pred = evaluation_classifier(x_generated)
-        task_confusions.append(F.kl_div(y_pred, y_true))
+        task_confusions.append(F.kl_div(y_pred, y_true).item())
 
         print("After task {} confusion on task {} is {}"
               .format(task_idx, test_task_idx, task_confusions[-1]))
@@ -293,8 +293,11 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         task_data = task_subset(test_data, test_task_ids, test_task_idx)
         x = torch.Tensor([x for x, _ in task_data])
         x = x.to(device)
-        x_reconstructed = model(x)
-        task_likelihoods.append(bernoulli_log_likelihood(x, x_reconstructed).item())
+        x_reconstructed = model(x, head)
+        task_likelihoods.append(torch.mean(bernoulli_log_likelihood(x, x_reconstructed)).item())
+
+        print("After task {} log likelihood on reconstruction task {} is {}"
+              .format(task_idx, test_task_idx, task_likelihoods[-1]))
 
     if summary_writer is not None:
         task_confusions_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_confusions))

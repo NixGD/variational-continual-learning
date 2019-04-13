@@ -8,7 +8,7 @@ from torchvision.transforms import Compose, ToTensor
 from torchvision.datasets import MNIST
 from models.contrib import GenerativeVCL
 from models.coreset import RandomCoreset
-from models.deep_models import Conv2DClassifier, MLPClassifier
+from models.deep_models import MnistResNet
 from util.datasets import NOTMNIST
 from util.transforms import Flatten, Scale
 from util.experiment_utils import run_generative_task
@@ -20,7 +20,7 @@ from tqdm import tqdm
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
 INITIAL_POSTERIOR_VAR = 1e-3
-CLASSIFIER_EPOCHS = 300
+CLASSIFIER_EPOCHS = 10
 CLASSIFIER_BATCH_SIZE = 64
 MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
 NOTMNIST_CLASSIFIER_FILENAME = 'n_mnist_classifier.pth'
@@ -36,12 +36,12 @@ def train_mnist_classifier():
     """
     # image transforms and model
     # transforms = Compose([Flatten(), Scale()])
-    transforms = Flatten()
-    model = MLPClassifier(MNIST_FLATTENED_DIM, 10).to(device)
-    # transforms = Compose([ToTensor(), Scale()])
+    # transforms = Flatten()
+    model = MnistResNet().to(device)
+    transforms = Compose([ToTensor(), Scale()])
     # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adadelta(model.parameters())
 
     # download dataset
     mnist_train = MNIST(root="data", train=True, download=True, transform=transforms)
@@ -50,13 +50,12 @@ def train_mnist_classifier():
     test_loader = DataLoader(mnist_test, batch_size=len(mnist_test), shuffle=True)
 
     # train
+    model.train()
     for epoch in tqdm(range(CLASSIFIER_EPOCHS), 'Epochs'):
         epoch_loss = 0
-        for batch in train_loader:
+        for batch in tqdm(train_loader):
             optimizer.zero_grad()
-            x, y = batch
-            # x = x.to(device)
-            # y = y.to(device)
+            x, y = batch[0].to(device), batch[1].to(device)
 
             predictions = model(x)
             loss = loss_fn(predictions, y)
@@ -66,12 +65,11 @@ def train_mnist_classifier():
             optimizer.step()
 
     # evaluate
+    model.eval()
     for batch in test_loader:
-        x, y = batch
-        # x = x.to(device)
-        # y = y.to(device)
+        x, y = batch[0].to(device), batch[1].to(device)
 
-        predictions = model.predict(x)
+        predictions = torch.argmax(model(x), dim=1)
         accuracy = class_accuracy(predictions, y)
 
     print('Classifier accuracy: ' + str(accuracy))
@@ -84,12 +82,12 @@ def train_not_mnist_classifier():
     evaluation metric in the generative tasks.
     """
     # image transforms and model
-    transforms = Compose([Flatten(), Scale()])
-    model = MLPClassifier(MNIST_FLATTENED_DIM, 10).to(device)
-    # transforms = Compose([ToTensor(), Scale()])
+    # transforms = Compose([Flatten(), Scale()])
+    model = MnistResNet().to(device)
+    transforms = Compose([ToTensor(), Scale()])
     # model = Conv2DClassifier(1, 10).to(device)
-    loss_fn = torch.nn.NLLLoss()
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adadelta(model.parameters())
 
     # download dataset
     not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=transforms)
@@ -98,9 +96,10 @@ def train_not_mnist_classifier():
     test_loader = DataLoader(not_mnist_test, len(not_mnist_test))
 
     # train
+    model.train()
     for epoch in tqdm(range(CLASSIFIER_EPOCHS), 'Epochs'):
         epoch_loss = 0
-        for batch in train_loader:
+        for batch in tqdm(train_loader):
             optimizer.zero_grad()
             x, y = batch
             x = x.to(device)
@@ -113,12 +112,11 @@ def train_not_mnist_classifier():
             optimizer.step()
 
     # evaluate
+    model.eval()
     for batch in test_loader:
-        x, y = batch
-        x = x.to(device)
-        y = y.to(device)
+        x, y = batch[0].to(device), batch[1].to(device)
 
-        predictions = model.predict(x)
+        predictions = torch.argmax(model(x), dim=1)
         accuracy = class_accuracy(predictions, y)
 
     print('Classifier accuracy: ' + str(accuracy))
@@ -137,7 +135,7 @@ def generate_mnist():
     multiheaded = True
     coreset_size = 40
     epochs = 1
-    batch_size = 50000
+    batch_size = 50
 
     transform = Compose([Flatten(), Scale()])
 
@@ -189,7 +187,7 @@ def generate_not_mnist():
     multiheaded = True
     coreset_size = 40
     epochs = 120
-    batch_size = 50000
+    batch_size = 50
 
     transform = Compose([Flatten(), Scale()])
 

@@ -200,8 +200,11 @@ class GenerativeVCL(VCL):
 
     def forward(self, x, head_idx, sample_parameters=True):
         """ Forward pass for the entire VAE, passing through both the encoder and the decoder. """
-        means_and_vars = self.forward_encoder_only(x, head_idx)
-        z = torch.normal(means_and_vars[:, 0], torch.exp(means_and_vars[:, 1]))
+        z_params = self.forward_encoder_only(x, head_idx)
+        z_means = torch.stack(tuple([z_params[:, 0] for _ in range(self.z_dim)]), dim=1)
+        z_variances = torch.stack(tuple([torch.exp(z_params[:, 0]) for _ in range(self.z_dim)]), dim=1)
+
+        z = torch.normal(z_means, z_variances)
         x_out = self.forward_decoder_only(z, head_idx)
 
         return x_out
