@@ -5,6 +5,7 @@ import numpy as np
 from util.operations import task_subset
 import torch.optim as optim
 from tqdm import tqdm
+from random import shuffle
 
 class Coreset():
     """
@@ -27,11 +28,15 @@ class Coreset():
 
         return d
 
-    def coreset_train(self, m, old_optimizer, up_to_task, epochs, device,
+    def coreset_train(self, m, old_optimizer, tasks, epochs, device,
                       y_transform=None, multiheaded=True, batch_size=256):
         """
         Returns a new model, trained on the coreset.  The returned model will
         be a deep copy, except when coreset is empty (when it will be identical)
+
+        tasks can be either a list, in which case the coreset will be trained
+        on all tasks in the list, or an integer, in which case it will be
+        trained on only that task.
         """
 
         if self.coreset is None:
@@ -42,14 +47,24 @@ class Coreset():
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         optimizer.load_state_dict(old_optimizer.state_dict())
 
-        task_subsets  = [ task_subset(self.coreset, self.coreset_task_ids, task_idx)
-                          for task_idx in range(up_to_task+1) ]
-        train_loaders = [ data.DataLoader(task_data, batch_size)
-                          for task_data in task_subsets ]
+        # if tasks is an integer, turn it into a singleton.
+        if isinstance(tasks, int):
+            tasks = [tasks]
+
+        # create dict of train_loaders
+        train_loaders = {
+            task_idx :  data.DataLoader(
+                            task_subset(self.coreset, self.coreset_task_ids, task_idx),
+                            batch_size
+                        )
+            for task_idx in tasks
+        }
 
         print('CORESET TRAIN')
         for _ in tqdm(range(epochs), 'Epochs: '):
-            for task_idx in torch.randperm(up_to_task+1):
+            # Randomize order of training tasks
+            shuffle(tasks)
+            for task_idx in tasks:
                 head = task_idx if multiheaded else 0
 
                 for batch in train_loaders[task_idx]:

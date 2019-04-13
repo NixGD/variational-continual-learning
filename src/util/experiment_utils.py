@@ -58,7 +58,8 @@ def run_point_estimate_initialisation(model, data, epochs, task_ids, batch_size,
 
 def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
              task_idx, coreset, epochs, batch_size, save_as, device, lr,
-             y_transform=None, multiheaded=True, summary_writer=None):
+             y_transform=None, multiheaded=True, train_full_coreset=True,
+             summary_writer=None):
     """
         Trains a VCL model using online variational inference on a task, and performs a coreset
         training run as well as an evaluation after training.
@@ -116,10 +117,11 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     # after training, prepare for new task by copying posteriors into priors
     model.reset_for_new_task(head)
 
-    # train using coreset
-    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
-                                             device, y_transform=y_transform,
-                                             multiheaded=multiheaded)
+    # train using full coreset
+    if train_full_coreset:
+        model_cs_trained = coreset.coreset_train(
+            model, optimizer, list(range(task_idx+1)), epochs,
+            device, y_transform=y_transform, multiheaded=multiheaded )
 
     # test
     task_accuracies = []
@@ -127,6 +129,11 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     tot_tested = 0
 
     for test_task_idx in range(task_idx + 1):
+        if not train_full_coreset:
+            model_cs_trained = coreset.coreset_train(
+                model, optimizer, test_task_idx , epochs,
+                device, y_transform=y_transform, multiheaded=multiheaded )
+
         head = test_task_idx if multiheaded else 0
 
         task_data = task_subset(test_data, test_task_ids, test_task_idx)

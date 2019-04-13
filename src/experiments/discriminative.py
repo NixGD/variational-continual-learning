@@ -34,6 +34,7 @@ def permuted_mnist():
     CORESET_SIZE = 200
     EPOCHS = 100
     BATCH_SIZE = 256
+    TRAIN_FULL_CORESET = True
 
     # flattening and permutation used for each task
     transforms = [Compose([Flatten(), Scale(), Permute(torch.randperm(MNIST_FLATTENED_DIM))]) for _ in range(N_TASKS)]
@@ -78,7 +79,8 @@ def permuted_mnist():
             test_data=mnist_test, test_task_ids=test_task_ids, task_idx=task,
             coreset=coreset, epochs=EPOCHS, batch_size=BATCH_SIZE,
             device=device, lr=LR, save_as="disc_p_mnist",
-            multiheaded=MULTIHEADED, summary_writer=writer
+            multiheaded=MULTIHEADED, train_full_coreset=TRAIN_FULL_CORESET,
+            summary_writer=writer
         )
 
     writer.close()
@@ -95,8 +97,9 @@ def split_mnist():
     N_TASKS = 5
     MULTIHEADED = True
     CORESET_SIZE = 40
-    EPOCHS = 120
+    EPOCHS = 1
     BATCH_SIZE = 50000
+    TRAIN_FULL_CORESET = True
 
     transform = Compose([Flatten(), Scale()])
 
@@ -146,7 +149,8 @@ def split_mnist():
             test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=EPOCHS, batch_size=BATCH_SIZE, lr=LR,
             save_as="disc_s_mnist", device=device, multiheaded=MULTIHEADED,
-            y_transform=binarize_y, summary_writer=writer
+            y_transform=binarize_y, train_full_coreset=TRAIN_FULL_CORESET,
+            summary_writer=writer
         )
 
     writer.close()
@@ -166,11 +170,12 @@ def split_not_mnist():
     CORESET_SIZE = 40
     EPOCHS = 120
     BATCH_SIZE = 400000
+    TRAIN_FULL_CORESET = True
 
-    # May need to scale not_mnist too?
+    transform = Compose([Flatten(), Scale()])
 
-    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=Flatten())
-    not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=Flatten())
+    not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=transform)
+    not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=transform)
 
     model = DiscriminativeVCL(
         in_size=MNIST_FLATTENED_DIM, out_size=N_CLASSES,
@@ -213,7 +218,7 @@ def split_not_mnist():
             coreset=coreset, task_idx=task_idx, epochs=EPOCHS, lr=LR,
             batch_size=BATCH_SIZE, save_as="disc_s_n_mnist", device=device,
             multiheaded=MULTIHEADED, y_transform=binarize_y,
-            summary_writer=writer
+            train_full_coreset=TRAIN_FULL_CORESET, summary_writer=writer
         )
 
     writer.close()
