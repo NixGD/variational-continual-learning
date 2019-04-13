@@ -121,8 +121,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     # train using full coreset
     if train_full_coreset:
         model_cs_trained = coreset.coreset_train(
-            model, optimizer, list(range(task_idx+1)), epochs,
-            device, y_transform=y_transform, multiheaded=multiheaded )
+            model, optimizer, list(range(task_idx + 1)), epochs,
+            device, y_transform=y_transform, multiheaded=multiheaded)
 
     # test
     task_accuracies = []
@@ -132,8 +132,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     for test_task_idx in range(task_idx + 1):
         if not train_full_coreset:
             model_cs_trained = coreset.coreset_train(
-                model, optimizer, test_task_idx , epochs,
-                device, y_transform=y_transform, multiheaded=multiheaded )
+                model, optimizer, test_task_idx, epochs,
+                device, y_transform=y_transform, multiheaded=multiheaded)
 
         head = test_task_idx if multiheaded else 0
 
@@ -269,8 +269,8 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
     model.reset_for_new_task(head)
 
     # coreset train
-    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
-                                             device, multiheaded=multiheaded)
+    model_cs_trained = coreset.coreset_train_generative(model, optimizer, task_idx, epochs,
+                                                        device, multiheaded=multiheaded)
 
     task_confusions = []
     task_likelihoods = []

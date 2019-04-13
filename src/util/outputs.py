@@ -36,4 +36,4 @@ def save_model(model, filename):
 def load_model(filename):
     if not os.path.exists(os.path.dirname(MODEL_DIR)):
         raise FileNotFoundError()
-    torch.load(MODEL_DIR + filename)
+    return torch.load(MODEL_DIR + filename)

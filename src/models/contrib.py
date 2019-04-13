@@ -241,7 +241,10 @@ class GenerativeVCL(VCL):
         """ Sample new images x from p(x|z)p(z), where z is a gaussian noise distribution. """
         z = torch.randn((batch_size, self.z_dim))
 
-        for layer in self.decoder_heads[task_idx] + self.decoder_shared:
+        for layer in self.decoder_heads[task_idx]:
+            z = F.relu(layer(z))
+
+        for layer in self.decoder_shared:
             z = F.relu(layer(z))
 
         return z
@@ -249,7 +252,11 @@ class GenerativeVCL(VCL):
     def reset_for_new_task(self, head_idx):
         """ Creates new encoder and resets the decoder (in the VCL sense). """
         self.encoder = Encoder(self.x_dim, self.z_dim, self.encoder_h_dims)
-        for layer in self.decoder_shared + self.decoder_heads[head_idx]:
+        for layer in self.decoder_shared:
+            if isinstance(layer, VariationalLayer):
+                layer.reset_for_next_task()
+
+        for layer in self.decoder_heads[head_idx]:
             if isinstance(layer, VariationalLayer):
                 layer.reset_for_next_task()
 

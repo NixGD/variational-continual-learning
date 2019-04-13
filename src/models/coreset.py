@@ -95,7 +95,7 @@ class Coreset():
         model = deepcopy(m)
 
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        optimizer.load_state_dict(old_optimizer.state_dict())
+        # optimizer.load_state_dict(old_optimizer.state_dict())
 
         task_subsets  = [ task_subset(self.coreset, self.coreset_task_ids, task_idx)
                           for task_idx in range(up_to_task+1) ]

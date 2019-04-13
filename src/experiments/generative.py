@@ -8,7 +8,7 @@ from torchvision.transforms import Compose, ToTensor
 from torchvision.datasets import MNIST
 from models.contrib import GenerativeVCL
 from models.coreset import RandomCoreset
-from models.deep_models import Conv2DClassifier
+from models.deep_models import Conv2DClassifier, MLPClassifier
 from util.datasets import NOTMNIST
 from util.transforms import Flatten, Scale
 from util.experiment_utils import run_generative_task
@@ -20,7 +20,7 @@ from tqdm import tqdm
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
 INITIAL_POSTERIOR_VAR = 1e-3
-CLASSIFIER_EPOCHS = 100
+CLASSIFIER_EPOCHS = 300
 CLASSIFIER_BATCH_SIZE = 64
 MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
 NOTMNIST_CLASSIFIER_FILENAME = 'n_mnist_classifier.pth'
@@ -35,16 +35,19 @@ def train_mnist_classifier():
     evaluation metric in the generative tasks.
     """
     # image transforms and model
-    transforms = Compose([ToTensor(), Scale()])
-    model = Conv2DClassifier(1, 10).to(device)
-    loss_fn = torch.nn.NLLLoss()
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=LR)
+    # transforms = Compose([Flatten(), Scale()])
+    transforms = Flatten()
+    model = MLPClassifier(MNIST_FLATTENED_DIM, 10).to(device)
+    # transforms = Compose([ToTensor(), Scale()])
+    # model = Conv2DClassifier(1, 10).to(device)
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)
 
     # download dataset
     mnist_train = MNIST(root="data", train=True, download=True, transform=transforms)
     mnist_test = MNIST(root="data", train=False, download=True, transform=transforms)
-    train_loader = DataLoader(mnist_train, CLASSIFIER_BATCH_SIZE)
-    test_loader = DataLoader(mnist_test, len(mnist_test))
+    train_loader = DataLoader(mnist_train, batch_size=CLASSIFIER_BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(mnist_test, batch_size=len(mnist_test), shuffle=True)
 
     # train
     for epoch in tqdm(range(CLASSIFIER_EPOCHS), 'Epochs'):
@@ -52,8 +55,8 @@ def train_mnist_classifier():
         for batch in train_loader:
             optimizer.zero_grad()
             x, y = batch
-            x = x.to(device)
-            y = y.to(device)
+            # x = x.to(device)
+            # y = y.to(device)
 
             predictions = model(x)
             loss = loss_fn(predictions, y)
@@ -63,8 +66,13 @@ def train_mnist_classifier():
             optimizer.step()
 
     # evaluate
-    x, y = test_loader[0]
-    accuracy = class_accuracy(model.predict(x), y)
+    for batch in test_loader:
+        x, y = batch
+        # x = x.to(device)
+        # y = y.to(device)
+
+        predictions = model.predict(x)
+        accuracy = class_accuracy(predictions, y)
 
     print('Classifier accuracy: ' + str(accuracy))
     save_model(model, MNIST_CLASSIFIER_FILENAME)
@@ -76,10 +84,12 @@ def train_not_mnist_classifier():
     evaluation metric in the generative tasks.
     """
     # image transforms and model
-    transforms = Compose([ToTensor(), Scale()])
-    model = Conv2DClassifier(1, 10).to(device)
+    transforms = Compose([Flatten(), Scale()])
+    model = MLPClassifier(MNIST_FLATTENED_DIM, 10).to(device)
+    # transforms = Compose([ToTensor(), Scale()])
+    # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.NLLLoss()
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=LR)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)
 
     # download dataset
     not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=transforms)
@@ -103,8 +113,13 @@ def train_not_mnist_classifier():
             optimizer.step()
 
     # evaluate
-    x, y = test_loader[0]
-    accuracy = class_accuracy(model.predict(x), y)
+    for batch in test_loader:
+        x, y = batch
+        x = x.to(device)
+        y = y.to(device)
+
+        predictions = model.predict(x)
+        accuracy = class_accuracy(predictions, y)
 
     print('Classifier accuracy: ' + str(accuracy))
     save_model(model, NOTMNIST_CLASSIFIER_FILENAME)
@@ -121,7 +136,7 @@ def generate_mnist():
     n_tasks = 10
     multiheaded = True
     coreset_size = 40
-    epochs = 120
+    epochs = 1
     batch_size = 50000
 
     transform = Compose([Flatten(), Scale()])
@@ -155,8 +170,8 @@ def generate_mnist():
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
-            save_as="disc_s_mnist", device=device, multiheaded=multiheaded,
-            summary_writer=writer, optimizer=optimizer
+            save_as="disc_s_mnist", device=device, evaluation_classifier=evaluation_classifier,
+            multiheaded=multiheaded, summary_writer=writer, optimizer=optimizer
         )
 
     writer.close()
@@ -207,8 +222,8 @@ def generate_not_mnist():
             model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
             test_data=not_mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
-            save_as="disc_s_mnist", device=device, multiheaded=multiheaded,
-            summary_writer=writer, optimizer=optimizer
+            save_as="disc_s_mnist", device=device, evaluation_classifier=evaluation_classifier,
+            multiheaded=multiheaded, summary_writer=writer, optimizer=optimizer
         )
 
     writer.close()

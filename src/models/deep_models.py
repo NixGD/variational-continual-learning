@@ -80,24 +80,50 @@ class Encoder(torch.nn.Module):
         pass
 
 
+class MLPClassifier(torch.nn.Module):
+    """ A simple MLP neural network for image classification """
+    def __init__(self, x_dim, y_dim):
+        super().__init__()
+        self.x_dim = x_dim
+        self.y_dim = y_dim
+
+        self.linear_1 = torch.nn.Linear(x_dim, 512)
+        self.linear_2 = torch.nn.Linear(512, 256)
+        self.linear_3 = torch.nn.Linear(256, 128)
+        self.linear_4 = torch.nn.Linear(128, 64)
+        self.linear_5 = torch.nn.Linear(64, y_dim)
+
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        h = F.relu(self.linear_1(x))
+        h = F.relu(self.linear_2(h))
+        h = F.relu(self.linear_3(h))
+        h = F.relu(self.linear_4(h))
+        h = self.linear_5(h)
+        return h
+
+    def predict(self, x):
+        preds = self.softmax(self(x))
+        return torch.argmax(preds, dim=1)
+
+
 class Conv2DClassifier(torch.nn.Module):
     """ A simple convolutional neural network for image classification """
     def __init__(self, in_channels, n_classes):
         super().__init__()
-        self.conv_1 = torch.nn.Conv2d(in_channels, 8, 8)      # on MNIST this outputs 8 * 21 * 21
-        self.conv_2 = torch.nn.Conv2d(8, 16, 3, 2)            # on MNIST this outputs 16 * 10 * 10
-        self.conv_3 = torch.nn.Conv2d(16, 32, 3, 2)           # on MNIST this outputs 32 * 4 * 4
-        self.linear_1 = torch.nn.Linear(32 * 4 * 4, 256)      # on MNIST maps 512 -> 256
-        self.linear_2 = torch.nn.Linear(256, n_classes)
+        self.conv_1 = torch.nn.Conv2d(in_channels, out_channels=16, kernel_size=3)
+        self.conv_2 = torch.nn.Conv2d(16, out_channels=32, kernel_size=3)
+        self.max_pool = torch.nn.MaxPool2d((2, 2))
+        self.linear_1 = torch.nn.Linear(32 * 12 * 12, n_classes)
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
         h = F.relu(self.conv_1(x))
         h = F.relu(self.conv_2(h))
-        h = F.relu(self.conv_3(h))
-        h = h.view(-1, 32 * 4 * 4)
-        h = F.relu(self.linear_1(h))
-        h = self.softmax(self.linear_2(h))
+        h = F.relu(self.max_pool(h))
+        h = h.view(-1, 32 * 12 * 12)
+        h = self.softmax(self.linear_1(h))
         return h
 
     def predict(self, x):
