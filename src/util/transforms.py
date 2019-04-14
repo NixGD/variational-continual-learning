@@ -9,6 +9,7 @@ class Flatten(object):
     def __call__(self, sample):
         return np.array(sample, dtype=np.float32).flatten()
 
+
 class Scale(object):
     """Scale images down to have [0,1] float pixel values"""
     def __init__(self, max_value=255):
@@ -16,6 +17,7 @@ class Scale(object):
 
     def __call__(self, sample):
         return sample / self.max_value
+
 
 class Permute(object):
     """ Apply a fixed permutation to the pixels in the image. """

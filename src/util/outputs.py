@@ -31,3 +31,9 @@ def save_model(model, filename):
         os.makedirs(os.path.dirname(MODEL_DIR))
 
     torch.save(model, MODEL_DIR + filename)
+
+
+def load_model(filename):
+    if not os.path.exists(os.path.dirname(MODEL_DIR)):
+        raise FileNotFoundError()
+    return torch.load(MODEL_DIR + filename)

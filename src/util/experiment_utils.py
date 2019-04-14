@@ -4,7 +4,8 @@ Utilities that abstract the low-level details of experiments, such as standard t
 
 import torch
 import torch.optim as optim
-from util.operations import task_subset, class_accuracy
+import torch.nn.functional as F
+from util.operations import task_subset, class_accuracy, bernoulli_log_likelihood
 from util.outputs import write_as_json, save_model
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
@@ -120,8 +121,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     # train using full coreset
     if train_full_coreset:
         model_cs_trained = coreset.coreset_train(
-            model, optimizer, list(range(task_idx+1)), epochs,
-            device, y_transform=y_transform, multiheaded=multiheaded )
+            model, optimizer, list(range(task_idx + 1)), epochs,
+            device, y_transform=y_transform, multiheaded=multiheaded)
 
     # test
     task_accuracies = []
@@ -131,8 +132,8 @@ def run_task(model, train_data, train_task_ids, test_data, test_task_ids,
     for test_task_idx in range(task_idx + 1):
         if not train_full_coreset:
             model_cs_trained = coreset.coreset_train(
-                model, optimizer, test_task_idx , epochs,
-                device, y_transform=y_transform, multiheaded=multiheaded )
+                model, optimizer, test_task_idx, epochs,
+                device, y_transform=y_transform, multiheaded=multiheaded)
 
         head = test_task_idx if multiheaded else 0
 
@@ -212,7 +213,7 @@ def run_generative_point_estimate_initialisation(model, data, epochs, task_ids, 
 
 def run_generative_task(model, train_data, train_task_ids, test_data, test_task_ids,
                         task_idx, coreset, epochs, batch_size, save_as, device, lr,
-                        multiheaded=True, optimizer=None, summary_writer=None):
+                        evaluation_classifier, multiheaded=True, optimizer=None, summary_writer=None):
     """
         Trains a VCL model using online variational inference on a task, and performs a coreset
         training run as well as an evaluation after training.
@@ -229,6 +230,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         :param save_as: base directory to save into
         :param device: device to run the experiment on, either 'cpu' or 'cuda'
         :param lr: optimizer learning rate to use
+        :param evaluation_classifier: classifier used for the 'classifier uncertainty' test metric
         :param optimizer: optionally, provide an existing optimizer instead of having the method create a new one
         :param multiheaded: true if the network being trained is multi-headed
         :param summary_writer: tensorboard_x summary writer
@@ -266,40 +268,43 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
     # after training, prepare for new task by copying posteriors into priors
     model.reset_for_new_task(head)
 
-    # test
-    model_cs_trained = coreset.coreset_train(model, optimizer, task_idx, epochs,
-                                             device, multiheaded=multiheaded)
+    # coreset train
+    model_cs_trained = coreset.coreset_train_generative(model, optimizer, task_idx, epochs,
+                                                        device, multiheaded=multiheaded)
 
-    task_accuracies = []
-    tot_right = 0
-    tot_tested = 0
+    task_confusions = []
+    task_likelihoods = []
 
     for test_task_idx in range(task_idx + 1):
         head = test_task_idx if multiheaded else 0
 
-        task_data = task_subset(test_data, test_task_ids, test_task_idx)
+        # first test using classifier confusion metric
+        y_true = torch.zeros(size=(batch_size, 10))
+        y_true[:, task_idx] = 1
 
+        x_generated = model_cs_trained.generate(batch_size, head).view(-1, 1, 28, 28)
+        y_pred = evaluation_classifier(x_generated)
+        kl_div = F.kl_div(y_pred, y_true).item()
+        task_confusions.append((kl_div).item())
+
+        print("After task {} confusion on task {} is {}"
+              .format(task_idx, test_task_idx, task_confusions[-1]))
+
+        # then test using log likelihood
+        task_data = task_subset(test_data, test_task_ids, test_task_idx)
         x = torch.Tensor([x for x, _ in task_data])
         x = x.to(device)
+        x_reconstructed = model(x, head)
+        task_likelihoods.append(torch.mean(bernoulli_log_likelihood(x, x_reconstructed)).item())
 
-        y_pred = model_cs_trained.prediction(x, head)
-
-        acc = class_accuracy(y_pred, y_true)
-        print("After task {} perfomance on task {} is {}"
-              .format(task_idx, test_task_idx, acc))
-
-        tot_right += acc * len(task_data)
-        tot_tested += len(task_data)
-        task_accuracies.append(acc)
-
-    mean_accuracy = tot_right / tot_tested
-    print("Mean accuracy:", mean_accuracy)
+        print("After task {} log likelihood on reconstruction task {} is {}"
+              .format(task_idx, test_task_idx, task_likelihoods[-1]))
 
     if summary_writer is not None:
-        task_accuracies_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_accuracies))
-        summary_writer.add_scalars("test_accuracy", task_accuracies_dict, task_idx + 1)
-        summary_writer.add_scalar("mean_posterior_variance", model._mean_posterior_variance(), task_idx + 1)
-        summary_writer.add_scalar("mean_accuracy", mean_accuracy, task_idx + 1)
+        task_confusions_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_confusions))
+        test_likelihoods_dict = dict(zip(["TASK_" + str(i) for i in range(task_idx + 1)], task_likelihoods))
+        summary_writer.add_scalars("test_confusion", task_confusions_dict, task_idx + 1)
+        summary_writer.add_scalars("test_likelihoods", test_likelihoods_dict, task_idx + 1)
 
-    write_as_json(save_as + '/accuracy.txt', task_accuracies)
+    write_as_json(save_as + '/accuracy.txt', task_confusions)
     save_model(model, save_as + '_model_task_' + str(task_idx) + '.pth')

@@ -29,6 +29,17 @@ def kl_divergence(posterior_means, posterior_log_vars, prior_mean=0.0, prior_log
     return kl
 
 
+def bernoulli_log_likelihood(x, p, epsilon=1e-8) -> torch.Tensor:
+    # since log probability, summing the log likelihood of each pixel gives
+    # the log likelihood of each data point
+    return torch.sum(
+        torch.add(
+            torch.mul(torch.log(p + epsilon), x),
+            torch.mul(torch.log(1 - p + epsilon), 1 - x)
+        ), 1
+    )
+
+
 def concatenate_flattened(tensor_list) -> torch.Tensor:
     """
     Given list of tensors, flattens each and concatenates their values.
