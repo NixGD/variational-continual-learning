@@ -4,7 +4,7 @@ import torch
 import torch.nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose, ToTensor
+from torchvision.transforms import Compose, ToTensor, Resize
 from torchvision.datasets import MNIST
 from models.contrib import GenerativeVCL
 from models.coreset import RandomCoreset
@@ -38,7 +38,7 @@ def train_mnist_classifier():
     # transforms = Compose([Flatten(), Scale()])
     # transforms = Flatten()
     model = MnistResNet().to(device)
-    transforms = Compose([ToTensor(), Scale()])
+    transforms = Compose([ToTensor(), Resize(size=(224, 224)), Scale()])
     # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adadelta(model.parameters())
@@ -137,7 +137,7 @@ def generate_mnist():
     epochs = 1
     batch_size = 50
 
-    transform = Compose([Flatten(), Scale()])
+    transform = Compose([Flatten(), Resize(size=(224, 224)), Scale()])
 
     # download dataset
     mnist_train = MNIST(root='data', train=True, download=True, transform=transform)
@@ -148,6 +148,8 @@ def generate_mnist():
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
     evaluation_classifier = load_model(MNIST_CLASSIFIER_FILENAME)
+    # we are using torchvision.models.ResNet, so need to call eval()
+    evaluation_classifier.eval()
 
     optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
@@ -200,6 +202,8 @@ def generate_not_mnist():
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
     evaluation_classifier = load_model(NOTMNIST_CLASSIFIER_FILENAME)
+    # we are using torchvision.models.ResNet, so need to call eval()
+    evaluation_classifier.eval()
 
     optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
