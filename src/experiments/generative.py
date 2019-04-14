@@ -148,7 +148,7 @@ def generate_mnist():
                           encoder_h_dims=(layer_width, layer_width, layer_width), decoder_head_h_dims=(layer_width,),
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
-    evaluation_classifier = load_model(MNIST_CLASSIFIER_FILENAME)
+    evaluation_classifier = load_model(MNIST_CLASSIFIER_FILENAME).to(device)
     # we are using ResNet, so need to call eval()
     evaluation_classifier.eval()
 
