@@ -25,7 +25,8 @@ CLASSIFIER_BATCH_SIZE = 64
 MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
 NOTMNIST_CLASSIFIER_FILENAME = 'n_mnist_classifier.pth'
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = 'cpu'
 print("Running on device", device)
 
 
