@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 MNIST_FLATTENED_DIM = 28 * 28
-LR = 0.0001
+LR = 0.01
 INITIAL_POSTERIOR_VAR = 1e-12
 CLASSIFIER_EPOCHS = 2
 CLASSIFIER_BATCH_SIZE = 64
