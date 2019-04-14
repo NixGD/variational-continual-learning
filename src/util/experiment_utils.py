@@ -279,7 +279,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         head = test_task_idx if multiheaded else 0
 
         # first test using classifier confusion metric
-        y_true = torch.zeros(size=(batch_size, 10))
+        y_true = torch.zeros(size=(batch_size, 10)).to(device)
         y_true[:, task_idx] = 1
 
         x_generated = model_cs_trained.generate(batch_size, head).view(batch_size, 1, 28, 28)
