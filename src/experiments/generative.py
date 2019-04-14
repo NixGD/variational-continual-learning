@@ -44,7 +44,7 @@ def train_mnist_classifier():
     mnist_train = MNIST(root="data", train=True, download=True, transform=transforms)
     mnist_test = MNIST(root="data", train=False, download=True, transform=transforms)
     train_loader = DataLoader(mnist_train, batch_size=CLASSIFIER_BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(mnist_test, batch_size=len(mnist_test), shuffle=True)
+    test_loader = DataLoader(mnist_test, batch_size=CLASSIFIER_BATCH_SIZE, shuffle=True)
 
     # train
     model.train()
@@ -63,11 +63,14 @@ def train_mnist_classifier():
 
     # evaluate
     model.eval()
+    accuracies = []
     for batch in test_loader:
         x, y = batch[0].to(device), batch[1].to(device)
 
         predictions = torch.argmax(model(x), dim=1)
-        accuracy = class_accuracy(predictions, y)
+        accuracies.append(class_accuracy(predictions, y))
+
+    accuracy = sum(accuracies) / len(accuracies)
 
     print('Classifier accuracy: ' + str(accuracy))
     save_model(model, MNIST_CLASSIFIER_FILENAME)
@@ -87,8 +90,8 @@ def train_not_mnist_classifier():
     # download dataset
     not_mnist_train = NOTMNIST(train=True, overwrite=False, transform=transforms)
     not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=transforms)
-    train_loader = DataLoader(not_mnist_train, CLASSIFIER_BATCH_SIZE)
-    test_loader = DataLoader(not_mnist_test, len(not_mnist_test))
+    train_loader = DataLoader(not_mnist_train, CLASSIFIER_BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(not_mnist_test, CLASSIFIER_BATCH_SIZE, shuffle=True)
 
     # train
     model.train()
@@ -108,11 +111,14 @@ def train_not_mnist_classifier():
 
     # evaluate
     model.eval()
+    accuracies = []
     for batch in test_loader:
         x, y = batch[0].to(device), batch[1].to(device)
 
         predictions = torch.argmax(model(x), dim=1)
-        accuracy = class_accuracy(predictions, y)
+        accuracies.append(class_accuracy(predictions, y))
+
+    accuracy = sum(accuracies) / len(accuracies)
 
     print('Classifier accuracy: ' + str(accuracy))
     save_model(model, NOTMNIST_CLASSIFIER_FILENAME)
@@ -143,7 +149,7 @@ def generate_mnist():
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
     evaluation_classifier = load_model(MNIST_CLASSIFIER_FILENAME)
-    # we are using torchvision.models.ResNet, so need to call eval()
+    # we are using ResNet, so need to call eval()
     evaluation_classifier.eval()
 
     optimizer = Adam(model.parameters(), lr=LR)
@@ -157,7 +163,7 @@ def generate_mnist():
         train_task_ids = torch.Tensor([y.item() for _, y in mnist_train])
         test_task_ids = torch.Tensor([y.item() for _, y in mnist_test])
 
-    summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    summary_logdir = os.path.join("logs", "gen_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
 
     for task_idx in range(n_tasks):
@@ -165,7 +171,7 @@ def generate_mnist():
             model=model, train_data=mnist_train, train_task_ids=train_task_ids,
             test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
-            save_as="disc_s_mnist", device=device, evaluation_classifier=evaluation_classifier,
+            save_as="gen_mnist", device=device, evaluation_classifier=evaluation_classifier,
             multiheaded=multiheaded, summary_writer=writer, optimizer=optimizer
         )
 
@@ -197,7 +203,7 @@ def generate_not_mnist():
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
     evaluation_classifier = load_model(NOTMNIST_CLASSIFIER_FILENAME)
-    # we are using torchvision.models.ResNet, so need to call eval()
+    # we are using ResNet, so need to call eval()
     evaluation_classifier.eval()
 
     optimizer = Adam(model.parameters(), lr=LR)
@@ -211,7 +217,7 @@ def generate_not_mnist():
         train_task_ids = torch.Tensor([y.item() for _, y in not_mnist_train])
         test_task_ids = torch.Tensor([y.item() for _, y in not_mnist_test])
 
-    summary_logdir = os.path.join("logs", "disc_s_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
+    summary_logdir = os.path.join("logs", "gen_n_mnist", datetime.now().strftime('%b%d_%H-%M-%S'))
     writer = SummaryWriter(summary_logdir)
 
     for task_idx in range(n_tasks):
@@ -219,7 +225,7 @@ def generate_not_mnist():
             model=model, train_data=not_mnist_train, train_task_ids=train_task_ids,
             test_data=not_mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
-            save_as="disc_s_mnist", device=device, evaluation_classifier=evaluation_classifier,
+            save_as="gen_n_mnist", device=device, evaluation_classifier=evaluation_classifier,
             multiheaded=multiheaded, summary_writer=writer, optimizer=optimizer
         )
 
