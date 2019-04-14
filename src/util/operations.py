@@ -29,7 +29,7 @@ def kl_divergence(posterior_means, posterior_log_vars, prior_mean=0.0, prior_log
     return kl
 
 
-def bernoulli_log_likelihood(x, p, epsilon=1e-20) -> torch.Tensor:
+def bernoulli_log_likelihood(x, p, epsilon=1e-8) -> torch.Tensor:
     # since log probability, summing the log likelihood of each pixel gives
     # the log likelihood of each data point
     return torch.sum(

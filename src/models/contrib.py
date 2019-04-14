@@ -16,7 +16,7 @@ from layers.variational import VariationalLayer, MeanFieldGaussianLinear
 from models.deep_models import Encoder
 from util.operations import kl_divergence, bernoulli_log_likelihood
 
-EPSILON = 1e-20  # Small value to avoid divide-by-zero and log(zero) problems
+EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
 
 
 class VCL(nn.Module, ABC):

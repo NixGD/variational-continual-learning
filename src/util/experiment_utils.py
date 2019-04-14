@@ -282,9 +282,10 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         y_true = torch.zeros(size=(batch_size, 10))
         y_true[:, task_idx] = 1
 
-        x_generated = model_cs_trained.generate(batch_size, head).view(batch_size, 1, 28, 28)
+        x_generated = model_cs_trained.generate(batch_size, head).view(-1, 1, 28, 28)
         y_pred = evaluation_classifier(x_generated)
-        task_confusions.append(F.kl_div(y_pred, y_true).item())
+        kl_div = F.kl_div(y_pred, y_true).item()
+        task_confusions.append((kl_div).item())
 
         print("After task {} confusion on task {} is {}"
               .format(task_idx, test_task_idx, task_confusions[-1]))
