@@ -16,16 +16,17 @@ def class_accuracy(pred: torch.Tensor, true: torch.Tensor) -> float:
     return 100 * (pred.int() == true.int()).sum().item() / len(true)
 
 
-def kl_divergence(posterior_means, posterior_log_vars, prior_mean=0.0, prior_log_var=0.0):
-    """ Computes KL(posterior, prior) """
+def kl_divergence(z_posterior_means, z_posterior_log_std, z_prior_mean=0.0, z_prior_log_std=0.0):
+    """ Computes KL(z_posterior, z_prior) """
     # code adapted from author implementation at
     # https://github.com/nvcuong/variational-continual-learning/blob/master/dgm/alg/helper_functions.py
-    p_means = torch.full_like(posterior_means, prior_mean)
-    p_log_vars = torch.full_like(posterior_log_vars, prior_log_var)
-    prior_precision = torch.exp(torch.mul(p_log_vars, -2))
-    kl = 0.5 * (posterior_means - p_means) ** 2 * prior_precision - 0.5
-    kl += p_log_vars - posterior_log_vars
-    kl += 0.5 * torch.exp(2 * posterior_log_vars - 2 * p_log_vars)
+    z_prior_means = torch.full_like(z_posterior_means, z_prior_mean)
+    z_prior_log_stds = torch.full_like(z_posterior_log_std, z_prior_log_std)
+
+    prior_precision = torch.exp(torch.mul(z_prior_log_stds, -2))
+    kl = 0.5 * ((z_posterior_means - z_prior_means) ** 2) * prior_precision - 0.5
+    kl += z_prior_log_stds - z_posterior_log_std
+    kl += 0.5 * torch.exp(2 * z_posterior_log_std - 2 * z_prior_log_stds)
     return torch.sum(kl, dim=(1,))
 
 
@@ -41,7 +42,11 @@ def bernoulli_log_likelihood(x_observed, x_reconstructed, epsilon=1e-8) -> torch
     inv_prob = torch.mul(torch.log(1 - x_reconstructed + epsilon), 1 - x_observed)
     inv_prob[inv_prob != inv_prob] = epsilon
 
-    return torch.sum(torch.add(prob, inv_prob), 1)
+    return torch.sum(torch.add(prob, inv_prob), dim=(1,))
+
+
+def normal_with_reparameterization(means: torch.Tensor, log_stds: torch.Tensor, device='cpu') -> torch.Tensor:
+    return torch.add(means, torch.mul(torch.exp(log_stds), torch.randn_like(means).to(device)))
 
 
 def concatenate_flattened(tensor_list) -> torch.Tensor:

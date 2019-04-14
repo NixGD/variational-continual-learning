@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.0001
-INITIAL_POSTERIOR_VAR = 1e-12
+INITIAL_POSTERIOR_VAR = 1e-3
 CLASSIFIER_EPOCHS = 2
 CLASSIFIER_BATCH_SIZE = 64
 MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
@@ -152,7 +152,7 @@ def generate_mnist():
     # we are using ResNet, so need to call eval()
     evaluation_classifier.eval()
 
-    optimizer = Adam(model.parameters(), lr=LR)
+    # optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
     # each label is its own task, so no need to define a dictionary like in the discriminative experiments
@@ -172,7 +172,7 @@ def generate_mnist():
             test_data=mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
             save_as="gen_mnist", device=device, evaluation_classifier=evaluation_classifier,
-            multiheaded=multiheaded, summary_writer=writer, optimizer=optimizer
+            multiheaded=multiheaded, summary_writer=writer
         )
 
     writer.close()
@@ -206,7 +206,7 @@ def generate_not_mnist():
     # we are using ResNet, so need to call eval()
     evaluation_classifier.eval()
 
-    optimizer = Adam(model.parameters(), lr=LR)
+    # optimizer = Adam(model.parameters(), lr=LR)
     coreset = RandomCoreset(size=coreset_size)
 
     # each label is its own task, so no need to define a dictionary like in the discriminative experiments
@@ -226,7 +226,7 @@ def generate_not_mnist():
             test_data=not_mnist_test, test_task_ids=test_task_ids, coreset=coreset,
             task_idx=task_idx, epochs=epochs, batch_size=batch_size, lr=LR,
             save_as="gen_n_mnist", device=device, evaluation_classifier=evaluation_classifier,
-            multiheaded=multiheaded, summary_writer=writer, optimizer=optimizer
+            multiheaded=multiheaded, summary_writer=writer
         )
 
     writer.close()

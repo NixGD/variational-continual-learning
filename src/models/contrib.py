@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.variational import VariationalLayer, MeanFieldGaussianLinear
 from models.deep_models import Encoder
-from util.operations import kl_divergence, bernoulli_log_likelihood
+from util.operations import kl_divergence, bernoulli_log_likelihood, normal_with_reparameterization
 
 EPSILON = 1e-8  # Small value to avoid divide-by-zero and log(zero) problems
 
@@ -202,9 +202,9 @@ class GenerativeVCL(VCL):
         """ Forward pass for the entire VAE, passing through both the encoder and the decoder. """
         z_params = self.forward_encoder_only(x, head_idx).view(len(x), self.z_dim, 2)
         z_means = z_params[:, :, 0]
-        z_variances = torch.exp(z_params[:, :, 1])
+        z_log_std = z_params[:, :, 1]
 
-        z = torch.normal(z_means, z_variances)
+        z = normal_with_reparameterization(z_means, torch.exp(z_log_std), self.device).to(self.device)
         x_out = self.forward_decoder_only(z, head_idx)
 
         return x_out
@@ -230,7 +230,7 @@ class GenerativeVCL(VCL):
                 h = F.relu(layer(h))
 
             x_out.add_(h)
-        x_out.div_(self.mc_sampling_n)
+        x_out.div_(self.mc_sampling_n if sample_parameters else 1)
 
         return x_out
 
@@ -271,12 +271,12 @@ class GenerativeVCL(VCL):
         """ Computes the variational lower bound """
         z_params = self.forward_encoder_only(x, head_idx).view(len(x), self.z_dim, 2)
         z_means = z_params[:, :, 0]
-        z_variances = torch.exp(z_params[:, :, 1])
+        z_log_std = z_params[:, :, 1]
 
-        kl = kl_divergence(z_means, z_params[:, :, 1])
+        kl = kl_divergence(z_means, z_log_std)
         log_likelihood = torch.zeros(size=(x.size()[0],)).to(self.device)
         for _ in range(sample_n):
-            z = torch.normal(z_means, z_variances)
+            z = normal_with_reparameterization(z_means, torch.exp(z_log_std), self.device).to(self.device)
             x_reconstructed = self.forward_decoder_only(z, head_idx)
             # Bernoulli likelihood of data
             log_likelihood.add_(bernoulli_log_likelihood(x, x_reconstructed, self.epsilon))

@@ -266,7 +266,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
     # after training, prepare for new task by copying posteriors into priors
     model.reset_for_new_task(head)
     # we're reset a lot of parameters in the model, so we refresh the optimizer as well
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # coreset train
     model_cs_trained = coreset.coreset_train_generative(model, optimizer, task_idx, epochs,

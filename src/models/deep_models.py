@@ -135,7 +135,7 @@ class Conv2DClassifier(torch.nn.Module):
     def predict(self, x):
         h = self(x)
         h = torch.argmax(h, dim=1)
-        return
+        return h
 
 
 # All credits for the MNIST-adapted ResNet model go to:
@@ -150,5 +150,5 @@ class MnistResNet(ResNet):
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
-        upsampled = F.interpolate(x, size=(224, 224))
-        return self.softmax(super(MnistResNet, self).forward(upsampled))
+        up_sampled = F.interpolate(x, size=(224, 224))
+        return self.softmax(super(MnistResNet, self).forward(up_sampled))
