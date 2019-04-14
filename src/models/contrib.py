@@ -242,7 +242,7 @@ class GenerativeVCL(VCL):
 
     def generate(self, batch_size, task_idx):
         """ Sample new images x from p(x|z)p(z), where z is a gaussian noise distribution. """
-        z = torch.randn((batch_size, self.z_dim))
+        z = torch.randn((batch_size, self.z_dim)).to(self.device)
 
         for layer in self.decoder_heads[task_idx]:
             z = F.relu(layer(z))
