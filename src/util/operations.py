@@ -26,18 +26,22 @@ def kl_divergence(posterior_means, posterior_log_vars, prior_mean=0.0, prior_log
     kl = 0.5 * (posterior_means - p_means) ** 2 * prior_precision - 0.5
     kl += p_log_vars - posterior_log_vars
     kl += 0.5 * torch.exp(2 * posterior_log_vars - 2 * p_log_vars)
-    return kl
+    return torch.sum(kl, dim=(1,))
 
 
-def bernoulli_log_likelihood(x, p, epsilon=1e-8) -> torch.Tensor:
-    # since log probability, summing the log likelihood of each pixel gives
-    # the log likelihood of each data point
-    return torch.sum(
-        torch.add(
-            torch.mul(torch.log(p + epsilon), x),
-            torch.mul(torch.log(1 - p + epsilon), 1 - x)
-        ), 1
-    )
+def bernoulli_log_likelihood(x_observed, x_reconstructed, epsilon=1e-8) -> torch.Tensor:
+    """
+    For observed batch of data x, and reconstructed data p (we view p as a
+    probability of a pixel being on), computes a tensor of dimensions
+    [batch_size] representing the log likelihood of each data point in the batch.
+    """
+    # broken into steps because some log probabilities are extremely low and cause NaNs to appear
+    # as a hacky solution, we replace NaNs with a log probability of 10**-8 as an intermediate step
+    prob = torch.mul(torch.log(x_reconstructed + epsilon), x_observed)
+    inv_prob = torch.mul(torch.log(1 - x_reconstructed + epsilon), 1 - x_observed)
+    inv_prob[inv_prob != inv_prob] = epsilon
+
+    return torch.sum(torch.add(prob, inv_prob), 1)
 
 
 def concatenate_flattened(tensor_list) -> torch.Tensor:

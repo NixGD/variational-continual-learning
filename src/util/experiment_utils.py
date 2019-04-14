@@ -240,7 +240,6 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
 
     # separate optimizer for each task
     optimizer = optimizer if optimizer is not None else optim.Adam(model.parameters(), lr=lr)
-
     head = task_idx if multiheaded else 0
 
     # obtain correct subset of data for training, and set some aside for the coreset
@@ -253,8 +252,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         epoch_loss = 0
         for batch in train_loader:
             optimizer.zero_grad()
-            x, _ = batch
-            x = x.to(device)
+            x = batch[0].to(device)
 
             loss = model.vae_loss(x, head, len(task_data))
             epoch_loss += len(x) * loss.item()
@@ -267,6 +265,8 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
 
     # after training, prepare for new task by copying posteriors into priors
     model.reset_for_new_task(head)
+    # we're reset a lot of parameters in the model, so we refresh the optimizer as well
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # coreset train
     model_cs_trained = coreset.coreset_train_generative(model, optimizer, task_idx, epochs,
@@ -284,8 +284,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
 
         x_generated = model_cs_trained.generate(batch_size, head).view(-1, 1, 28, 28)
         y_pred = evaluation_classifier(x_generated)
-        kl_div = F.kl_div(y_pred, y_true).item()
-        task_confusions.append((kl_div).item())
+        task_confusions.append(F.kl_div(torch.log(y_pred), y_true).item())
 
         print("After task {} confusion on task {} is {}"
               .format(task_idx, test_task_idx, task_confusions[-1]))
