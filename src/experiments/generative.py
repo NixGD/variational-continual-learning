@@ -35,7 +35,6 @@ def train_mnist_classifier():
     evaluation metric in the generative tasks.
     """
     # image transforms and model
-    device = 'cpu'
     model = MnistResNet().to(device)
     transforms = Compose([Resize(size=(224, 224)), ToTensor(), Scale()])
     loss_fn = torch.nn.CrossEntropyLoss()
