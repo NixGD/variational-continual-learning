@@ -290,7 +290,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
               .format(task_idx, test_task_idx, task_confusions[-1]))
 
         # generate a sample of 10 images
-        images = model_cs_trained.generate(10, head).view(10, 1, 28, 28)
+        images = x_generated[0:10]
         for count, image in enumerate(images, 0):
             save_generated_image(torch.squeeze(image.detach()).cpu().numpy(), 'mnist_' + str(test_task_idx) + '_after_' + str(task_idx) + '_' + str(count) + '.png')
 
