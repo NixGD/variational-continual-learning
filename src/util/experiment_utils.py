@@ -6,7 +6,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from util.operations import task_subset, class_accuracy, bernoulli_log_likelihood
-from util.outputs import write_as_json, save_model
+from util.outputs import write_as_json, save_model, save_generated_image
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from util.plot_autograd import make_dot
@@ -282,12 +282,17 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         y_true = torch.zeros(size=(batch_size, 10))
         y_true[:, task_idx] = 1
 
-        x_generated = model_cs_trained.generate(batch_size, head).view(-1, 1, 28, 28)
+        x_generated = model_cs_trained.generate(batch_size, head).view(batch_size, 1, 28, 28)
         y_pred = evaluation_classifier(x_generated)
         task_confusions.append(F.kl_div(torch.log(y_pred), y_true).item())
 
         print("After task {} confusion on task {} is {}"
               .format(task_idx, test_task_idx, task_confusions[-1]))
+
+        # generate a sample of 10 images
+        images = model_cs_trained.generate(10, head).view(10, 1, 28, 28)
+        for count, image in enumerate(images, 0):
+            save_generated_image(torch.squeeze(image.detach()).numpy(), 'mnist_' + str(test_task_idx) + '_after_' + str(task_idx) + '_' + str(count) + '.png')
 
         # then test using log likelihood
         task_data = task_subset(test_data, test_task_ids, test_task_idx)

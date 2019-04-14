@@ -149,5 +149,5 @@ class MnistResNet(ResNet):
                                      padding=(3, 3), bias=False)
 
     def forward(self, x):
-        return torch.softmax(
-            super(MnistResNet, self).forward(x), dim=-1)
+        upsampled = F.interpolate(x, size=(224, 224))
+        return torch.softmax(super(MnistResNet, self).forward(upsampled), dim=-1)

@@ -1,11 +1,14 @@
 import json
 import os
 import torch
+import numpy as np
+from PIL import Image
 
 
 # default directory for outputting values
 OUT_DIR = 'out/experiments/'
 MODEL_DIR = 'out/models/'
+IMAGE_DIR = 'out/images/'
 
 
 def write_as_json(filename, data):
@@ -37,3 +40,16 @@ def load_model(filename):
     if not os.path.exists(os.path.dirname(MODEL_DIR)):
         raise FileNotFoundError()
     return torch.load(MODEL_DIR + filename)
+
+
+def save_generated_image(data: np.ndarray, filename: str):
+    if not os.path.exists(os.path.dirname(IMAGE_DIR)):
+        print('creating ...')
+        os.makedirs(os.path.dirname(IMAGE_DIR))
+
+    data = data * 255
+    image = Image.fromarray(data)
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    image.save(IMAGE_DIR + filename)
+    np.save(IMAGE_DIR + filename + str('.npy'), data)
