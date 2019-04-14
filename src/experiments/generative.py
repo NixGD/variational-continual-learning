@@ -20,7 +20,7 @@ from tqdm import tqdm
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.001
 INITIAL_POSTERIOR_VAR = 1e-3
-CLASSIFIER_EPOCHS = 10
+CLASSIFIER_EPOCHS = 5
 CLASSIFIER_BATCH_SIZE = 64
 MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
 NOTMNIST_CLASSIFIER_FILENAME = 'n_mnist_classifier.pth'
@@ -35,11 +35,9 @@ def train_mnist_classifier():
     evaluation metric in the generative tasks.
     """
     # image transforms and model
-    # transforms = Compose([Flatten(), Scale()])
-    # transforms = Flatten()
+    device = 'cpu'
     model = MnistResNet().to(device)
     transforms = Compose([Resize(size=(224, 224)), ToTensor(), Scale()])
-    # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adadelta(model.parameters())
 
@@ -82,10 +80,8 @@ def train_not_mnist_classifier():
     evaluation metric in the generative tasks.
     """
     # image transforms and model
-    # transforms = Compose([Flatten(), Scale()])
     model = MnistResNet().to(device)
     transforms = Compose([Resize(size=(224, 224)), ToTensor(), Scale()])
-    # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adadelta(model.parameters())
 
