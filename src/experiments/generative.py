@@ -19,14 +19,13 @@ from tqdm import tqdm
 
 MNIST_FLATTENED_DIM = 28 * 28
 LR = 0.0001
-INITIAL_POSTERIOR_VAR = 1e-3
+INITIAL_POSTERIOR_VAR = 1e-12
 CLASSIFIER_EPOCHS = 2
 CLASSIFIER_BATCH_SIZE = 64
 MNIST_CLASSIFIER_FILENAME = 'mnist_classifier.pth'
 NOTMNIST_CLASSIFIER_FILENAME = 'n_mnist_classifier.pth'
 
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = 'cpu'
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Running on device", device)
 
 
