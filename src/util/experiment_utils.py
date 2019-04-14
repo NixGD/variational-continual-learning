@@ -292,7 +292,7 @@ def run_generative_task(model, train_data, train_task_ids, test_data, test_task_
         # generate a sample of 10 images
         images = model_cs_trained.generate(10, head).view(10, 1, 28, 28)
         for count, image in enumerate(images, 0):
-            save_generated_image(torch.squeeze(image.detach()).numpy(), 'mnist_' + str(test_task_idx) + '_after_' + str(task_idx) + '_' + str(count) + '.png')
+            save_generated_image(torch.squeeze(image.detach()).cpu().numpy(), 'mnist_' + str(test_task_idx) + '_after_' + str(task_idx) + '_' + str(count) + '.png')
 
         # then test using log likelihood
         task_data = task_subset(test_data, test_task_ids, test_task_idx)
