@@ -46,7 +46,7 @@ def bernoulli_log_likelihood(x_observed, x_reconstructed, epsilon=1e-8) -> torch
 
 
 def normal_with_reparameterization(means: torch.Tensor, log_stds: torch.Tensor, device='cpu') -> torch.Tensor:
-    return torch.add(means, torch.mul(torch.exp(log_stds), torch.randn_like(means).to(device)))
+    return torch.add(means, torch.mul(torch.exp(log_stds), torch.randn_like(means)))
 
 
 def concatenate_flattened(tensor_list) -> torch.Tensor:
