@@ -38,7 +38,7 @@ def train_mnist_classifier():
     # transforms = Compose([Flatten(), Scale()])
     # transforms = Flatten()
     model = MnistResNet().to(device)
-    transforms = Compose([ToTensor(), Resize(size=(224, 224)), Scale()])
+    transforms = Compose([Resize(size=(224, 224)), ToTensor(), Scale()])
     # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adadelta(model.parameters())
@@ -84,7 +84,7 @@ def train_not_mnist_classifier():
     # image transforms and model
     # transforms = Compose([Flatten(), Scale()])
     model = MnistResNet().to(device)
-    transforms = Compose([ToTensor(), Scale()])
+    transforms = Compose([Resize(size=(224, 224)), ToTensor(), Scale()])
     # model = Conv2DClassifier(1, 10).to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adadelta(model.parameters())
@@ -137,7 +137,7 @@ def generate_mnist():
     epochs = 1
     batch_size = 50
 
-    transform = Compose([Flatten(), Resize(size=(224, 224)), Scale()])
+    transform = Compose([Flatten(), Scale()])
 
     # download dataset
     mnist_train = MNIST(root='data', train=True, download=True, transform=transform)
