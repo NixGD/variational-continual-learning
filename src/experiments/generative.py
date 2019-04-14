@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 MNIST_FLATTENED_DIM = 28 * 28
-LR = 0.001
+LR = 0.0001
 INITIAL_POSTERIOR_VAR = 1e-3
 CLASSIFIER_EPOCHS = 2
 CLASSIFIER_BATCH_SIZE = 64
@@ -135,7 +135,7 @@ def generate_mnist():
     n_tasks = 10
     multiheaded = True
     coreset_size = 40
-    epochs = 1
+    epochs = 200
     batch_size = 50
 
     transform = Compose([Flatten(), Scale()])
@@ -145,7 +145,7 @@ def generate_mnist():
     mnist_test = MNIST(root='data/', train=False, download=True, transform=transform)
 
     model = GenerativeVCL(z_dim=z_dim, h_dim=h_dim, x_dim=MNIST_FLATTENED_DIM, n_heads=n_tasks,
-                          encoder_h_dims=(layer_width, layer_width), decoder_head_h_dims=(layer_width,),
+                          encoder_h_dims=(layer_width, layer_width, layer_width), decoder_head_h_dims=(layer_width,),
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
     evaluation_classifier = load_model(MNIST_CLASSIFIER_FILENAME)
@@ -189,7 +189,7 @@ def generate_not_mnist():
     n_tasks = 10
     multiheaded = True
     coreset_size = 40
-    epochs = 120
+    epochs = 400
     batch_size = 50
 
     transform = Compose([Flatten(), Scale()])
@@ -199,7 +199,7 @@ def generate_not_mnist():
     not_mnist_test = NOTMNIST(train=False, overwrite=False, transform=transform)
 
     model = GenerativeVCL(z_dim=z_dim, h_dim=h_dim, x_dim=MNIST_FLATTENED_DIM, n_heads=n_tasks,
-                          encoder_h_dims=(layer_width, layer_width), decoder_head_h_dims=(layer_width,),
+                          encoder_h_dims=(layer_width, layer_width, layer_width), decoder_head_h_dims=(layer_width,),
                           decoder_shared_h_dims=(layer_width,), initial_posterior_variance=INITIAL_POSTERIOR_VAR,
                           mc_sampling_n=10, device=device).to(device)
     evaluation_classifier = load_model(NOTMNIST_CLASSIFIER_FILENAME)

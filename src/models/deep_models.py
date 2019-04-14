@@ -81,6 +81,10 @@ class Encoder(torch.nn.Module):
     def encode(self, x, head_idx):
         pass
 
+    def reset_for_new_task(self):
+        for layer in self.layers:
+            layer.reset_parameters()
+
 
 class MLPClassifier(torch.nn.Module):
     """ A simple MLP neural network for image classification """
@@ -131,7 +135,7 @@ class Conv2DClassifier(torch.nn.Module):
     def predict(self, x):
         h = self(x)
         h = torch.argmax(h, dim=1)
-        return h
+        return
 
 
 # All credits for the MNIST-adapted ResNet model go to:

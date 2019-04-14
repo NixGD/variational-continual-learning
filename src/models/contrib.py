@@ -184,8 +184,8 @@ class GenerativeVCL(VCL):
         head_dims = [z_dim] + list(decoder_head_h_dims) + [h_dim]
         shared_dims = [h_dim] + list(decoder_shared_h_dims) + [x_dim]
 
-        # encoder
-        self.encoder = Encoder(x_dim, 2, encoder_h_dims)
+        # encoder produces means and variances for a z-dim diagonal gaussian
+        self.encoder = Encoder(x_dim, z_dim * 2, encoder_h_dims)
         # list of heads, each with a list of layers
         self.decoder_heads = nn.ModuleList([
             nn.ModuleList([MeanFieldGaussianLinear(head_dims[i], head_dims[i + 1], self.ipv) for i in range(len(head_dims) - 1)])
@@ -200,9 +200,9 @@ class GenerativeVCL(VCL):
 
     def forward(self, x, head_idx, sample_parameters=True):
         """ Forward pass for the entire VAE, passing through both the encoder and the decoder. """
-        z_params = self.forward_encoder_only(x, head_idx)
-        z_means = torch.stack(tuple([z_params[:, 0] for _ in range(self.z_dim)]), dim=1)
-        z_variances = torch.stack(tuple([torch.exp(z_params[:, 0]) for _ in range(self.z_dim)]), dim=1)
+        z_params = self.forward_encoder_only(x, head_idx).view(len(x), self.z_dim, 2)
+        z_means = z_params[:, :, 0]
+        z_variances = torch.exp(z_params[:, :, 1])
 
         z = torch.normal(z_means, z_variances)
         x_out = self.forward_decoder_only(z, head_idx)
@@ -254,7 +254,8 @@ class GenerativeVCL(VCL):
 
     def reset_for_new_task(self, head_idx):
         """ Creates new encoder and resets the decoder (in the VCL sense). """
-        self.encoder = Encoder(self.x_dim, self.z_dim, self.encoder_h_dims)
+        self.encoder.reset_for_new_task()
+
         for layer in self.decoder_shared:
             if isinstance(layer, VariationalLayer):
                 layer.reset_for_next_task()
@@ -268,12 +269,11 @@ class GenerativeVCL(VCL):
 
     def _elbo(self, x, head_idx, sample_n=1):
         """ Computes the variational lower bound """
-        z_params = self.forward_encoder_only(x, head_idx)
-        kl = kl_divergence(z_params[:, 0], z_params[:, 1])
+        z_params = self.forward_encoder_only(x, head_idx).view(len(x), self.z_dim, 2)
+        z_means = z_params[:, :, 0]
+        z_variances = torch.exp(z_params[:, :, 1])
 
-        z_means = torch.stack(tuple([z_params[:, 0] for _ in range(self.z_dim)]), dim=1)
-        z_variances = torch.stack(tuple([torch.exp(z_params[:, 0]) for _ in range(self.z_dim)]), dim=1)
-
+        kl = kl_divergence(z_means, z_params[:, :, 1])
         log_likelihood = torch.zeros(size=(x.size()[0],)).to(self.device)
         for _ in range(sample_n):
             z = torch.normal(z_means, z_variances)
